@@ -1,0 +1,20 @@
+{
+  "name": "claude-cortex-local",
+  "owner": {
+    "name": "Ben Hungerford"
+  },
+  "metadata": {
+    "description": "Local development marketplace for the Claude Cortex plugin. Single-plugin marketplace pointing at this repo.",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "claude-cortex",
+      "source": "./",
+      "description": "Always-on vault intelligence for an Obsidian-based second brain.",
+      "version": "0.1.0",
+      "category": "productivity",
+      "tags": ["obsidian", "vault", "knowledge-management"]
+    }
+  ]
+}
