@@ -59,15 +59,20 @@ The script prints the two `/plugin` commands above and verifies the plugin manif
 
 ## Install — Claude Desktop / Cowork
 
-Claude Desktop loads skills from a different location and does not currently support Claude Code's hook system. The Desktop install script copies the `skills/cortex/` directory into the Desktop skills folder so the always-on skill works in Cowork sessions.
+**TL;DR:** Run the same Claude Code install. Cowork picks it up automatically.
 
-```bash
-bash ~/Documents/claude-cortex-plugin/scripts/install-desktop.sh
-```
+Cowork (Claude Desktop's agentic mode) runs Claude Code inside a VM and inherits your user-level `~/.claude/plugins/` automatically. There is no separate install path — installing the plugin via Claude Code makes it available in both runtimes simultaneously.
 
-Then restart Claude Desktop. The skill will load on every new Cowork conversation.
+After installing via Claude Code:
 
-> **Note:** Until the `cortex-vault` MCP server (Stage 4) ships, Desktop and CLI installs have identical functionality. Once hooks land in Stage 3, CLI users will get auto-logging and deterministic trigger detection that Desktop users will get via skill-based fallbacks.
+1. Quit Claude Desktop completely (Cmd+Q, not just close window)
+2. Reopen Claude Desktop
+3. Start a new Cowork conversation
+4. The Cortex skill loads automatically
+
+You can use `scripts/install-desktop.sh` as a guided wrapper — it delegates to `install-cli.sh` and prints the Cowork restart steps.
+
+> **Caveat — remote Cowork sessions:** when Cowork runs on Anthropic's infrastructure (instead of in local agent mode on your machine), it cannot see your local plugin folder. To use Cortex in remote Cowork sessions you'll need to publish the plugin to a public marketplace. That's tracked as part of Stage 4.
 
 ---
 
@@ -79,7 +84,7 @@ Then restart Claude Desktop. The skill will load on every new Cowork conversatio
 /plugin marketplace remove claude-cortex-local
 ```
 
-**Claude Desktop:** delete the copied `cortex` skill folder from your Desktop skills directory.
+**Claude Desktop:** uninstall via the same `/plugin uninstall` flow inside a Claude Code session, then restart Desktop. (No separate Desktop uninstall — same install, same uninstall.)
 
 ---
 
