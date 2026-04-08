@@ -38,7 +38,7 @@ Write the registry back. Preserve formatting (2-space indent, trailing newline).
 
 Check whether `<repo_path>/CLAUDE.md` exists.
 
-- **If not:** Copy the contents of `~/.claude/skills/cortex/assets/repo-claude-stub.md` to `<repo_path>/CLAUDE.md`. Confirm to the user: *"Wrote Cortex stub to `<repo_path>/CLAUDE.md`."*
+- **If not:** Copy the contents of `${CLAUDE_PLUGIN_ROOT}/assets/repo-claude-stub.md` to `<repo_path>/CLAUDE.md`. `${CLAUDE_PLUGIN_ROOT}` is the plugin install path exposed by Claude Code. Confirm to the user: *"Wrote Cortex stub to `<repo_path>/CLAUDE.md`."*
 - **If yes:** Show the user the existing first 20 lines and ask: *"A `CLAUDE.md` already exists in this repo. Replace it with the Cortex stub? (yes / no / show full diff)"* On `yes`, replace it. On `no`, leave it alone but warn that Cortex won't auto-detect this repo on cwd resolution unless the existing CLAUDE.md mentions Cortex.
 
 **Step 4: Log to vault changelog**

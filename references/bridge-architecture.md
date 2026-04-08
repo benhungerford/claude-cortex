@@ -38,4 +38,4 @@ Work/.../Project Context.md     ← actual content
 ## Spec
 
 Full design spec lives in the vault at:
-`Work/Personal/Ben Hungerford/Cortex Onboarding/Product Development/specs/2026-04-07-cortex-repo-bridge-design.md`
+`Work/Personal/Ben Hungerford/Claude Cortex/Product Development/specs/2026-04-07-cortex-repo-bridge-design.md`

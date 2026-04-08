@@ -527,9 +527,15 @@ All fields must be populated from the captured values. If a value wasn't capture
 
 > "Since you're a developer, I can also set up Cortex for your coding sessions. When you open a project in Claude Code, Cortex will already know the project context, blockers, and recent decisions."
 
-**6.1: Install Cortex skill for Claude Code**
+**6.1: Confirm the Claude Cortex plugin is installed for Claude Code**
 
-Copy the entire `cortex-skill/` folder to `~/.claude/skills/cortex/` so the skill is available in Claude Code sessions.
+If this workflow is running, the plugin is already installed at least for the current runtime. For a developer user who wants coverage across every Claude surface (CLI, Desktop Code sidebar, Cowork), run:
+
+```bash
+bash ${CLAUDE_PLUGIN_ROOT}/scripts/install-desktop.sh
+```
+
+This mirrors the install into `~/.claude/plugins/` (used by the CLI and the Desktop Code sidebar) and into every `cowork_plugins/` store it finds under `~/Library/Application Support/Claude/local-agent-mode-sessions/`.
 
 **6.2: Offer repo pointers**
 
