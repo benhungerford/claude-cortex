@@ -57,22 +57,37 @@ The script prints the two `/plugin` commands above and verifies the plugin manif
 
 ---
 
-## Install — Claude Desktop / Cowork
+## Install — Claude Desktop Code sidebar
 
-**TL;DR:** Run the same Claude Code install. Cowork picks it up automatically.
+The Code sidebar inside Claude Desktop uses the same `~/.claude/plugins/` store as the Claude Code CLI. If you've already installed via the Claude Code install above, the sidebar picks it up on restart — quit Desktop (Cmd+Q), reopen, start a new Code session.
 
-Cowork (Claude Desktop's agentic mode) runs Claude Code inside a VM and inherits your user-level `~/.claude/plugins/` automatically. There is no separate install path — installing the plugin via Claude Code makes it available in both runtimes simultaneously.
+---
 
-After installing via Claude Code:
+## Install — Cowork (Claude Desktop agentic mode)
 
-1. Quit Claude Desktop completely (Cmd+Q, not just close window)
+**Cowork uses a SEPARATE plugin store** from Claude Code and the Code sidebar. It does not inherit `~/.claude/plugins/`. The plugin has to be installed into Cowork's own store at:
+
+```
+~/Library/Application Support/Claude/local-agent-mode-sessions/<session-id>/<workspace-id>/cowork_plugins/
+```
+
+Use the desktop install script (it mirrors the install into every Cowork workspace it finds):
+
+```bash
+bash ~/Documents/claude-cortex-plugin/scripts/install-desktop.sh
+```
+
+Then:
+
+1. Quit Claude Desktop completely (Cmd+Q)
 2. Reopen Claude Desktop
-3. Start a new Cowork conversation
-4. The Cortex skill loads automatically
+3. Start a new Cowork session
+4. `claude-cortex:cortex` should appear in the loaded skills
 
-You can use `scripts/install-desktop.sh` as a guided wrapper — it delegates to `install-cli.sh` and prints the Cowork restart steps.
-
-> **Caveat — remote Cowork sessions:** when Cowork runs on Anthropic's infrastructure (instead of in local agent mode on your machine), it cannot see your local plugin folder. To use Cortex in remote Cowork sessions you'll need to publish the plugin to a public marketplace. That's tracked as part of Stage 4.
+> **Caveats:**
+> - If Cowork creates a new workspace after you install, you'll need to re-run `install-desktop.sh`.
+> - **Remote Cowork** (running on Anthropic's infrastructure, not local agent mode) cannot see your local plugin folder. Requires a public marketplace — tracked as part of Stage 4.
+> - **Regular Claude Desktop Chat** (not Cowork, not Code sidebar) is not yet supported. It uses the DXT extension format, which is a separate build target.
 
 ---
 
