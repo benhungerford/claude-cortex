@@ -1,0 +1,4 @@
+[2026-04-01 09:00] CREATED | FILE: Test Project — Project Context.md | DEST: Work/TBL/Test Client/Test Project/ | NOTE: Initial project setup
+[2026-04-01 09:01] CREATED | FILE: _MOC.md | DEST: Work/TBL/Test Client/Test Project/ | NOTE: Project MOC
+[2026-04-02 10:00] UPDATED | FILE: Test Project — Project Context.md | DEST: Work/TBL/Test Client/Test Project/ | NOTE: Added tech stack
+[2026-04-05 14:30] PULLED | FILE: 2026-04-05 Client Check-in.md | DEST: Work/TBL/Test Client/Test Project/Notes/ | NOTE: From Granola
