@@ -1,0 +1,145 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# stop — Flush pending memory updates to the vault's memory.md.
+# Fired by Stop hook via run-hook.cmd.
+# Reads stdin JSON, checks for pending-memory.json, appends updates to vault.
+
+# ── Resolve paths ────────────────────────────────────────────────────────────
+
+PLUGIN_DATA="${CLAUDE_PLUGIN_DATA:-$HOME/.claude/cortex/plugin-data}"
+CONFIG_FILE="$HOME/.claude/cortex/config.json"
+
+# ── Helpers ──────────────────────────────────────────────────────────────────
+
+escape_for_json() {
+    local s="$1"
+    s="${s//\\/\\\\}"
+    s="${s//\"/\\\"}"
+    s="${s//$'\n'/\\n}"
+    s="${s//$'\r'/\\r}"
+    s="${s//$'\t'/\\t}"
+    printf '%s' "$s"
+}
+
+# ── Step 1: Read stdin JSON and check loop prevention ────────────────────────
+
+INPUT=$(cat)
+
+STOP_ACTIVE="$(python3 -c "
+import json, sys
+data = json.loads(sys.argv[1])
+print(data.get('stop_hook_active', False))
+" "$INPUT" 2>/dev/null)" || STOP_ACTIVE="False"
+
+if [[ "$STOP_ACTIVE" == "True" ]]; then
+    exit 0
+fi
+
+# ── Step 2: Check for pending memory updates ────────────────────────────────
+
+PENDING_FILE="$PLUGIN_DATA/session-cache/pending-memory.json"
+
+if [[ ! -f "$PENDING_FILE" ]] || [[ ! -s "$PENDING_FILE" ]]; then
+    printf '{}\n'
+    exit 0
+fi
+
+# ── Step 3: Resolve vault path ──────────────────────────────────────────────
+
+CACHE_FILE="$PLUGIN_DATA/session-cache/vault-path.txt"
+VAULT_PATH=""
+
+if [[ -f "$CACHE_FILE" ]]; then
+    VAULT_PATH="$(cat "$CACHE_FILE")"
+fi
+
+if [[ -z "$VAULT_PATH" && -f "$CONFIG_FILE" ]]; then
+    VAULT_PATH="$(python3 -c "
+import json
+try:
+    with open('$CONFIG_FILE') as f:
+        print(json.load(f).get('vault_path', ''))
+except Exception:
+    pass
+" 2>/dev/null)" || true
+fi
+
+if [[ -z "$VAULT_PATH" || ! -d "$VAULT_PATH" ]]; then
+    printf '{}\n'
+    exit 0
+fi
+
+# ── Step 4: Read and apply pending updates ──────────────────────────────────
+
+MEMORY_FILE="$VAULT_PATH/memory.md"
+CHANGELOG_FILE="$VAULT_PATH/_changelog.txt"
+
+FLUSH_RESULT="$(python3 -c "
+import json, sys, os
+
+pending_file = sys.argv[1]
+memory_file = sys.argv[2]
+
+try:
+    with open(pending_file) as f:
+        updates = json.load(f)
+except Exception:
+    print('0')
+    sys.exit()
+
+if not isinstance(updates, list) or len(updates) == 0:
+    print('0')
+    sys.exit()
+
+# Read existing memory content
+existing = ''
+if os.path.exists(memory_file):
+    with open(memory_file) as f:
+        existing = f.read()
+
+# Append each update
+with open(memory_file, 'a') as f:
+    for entry in updates:
+        section = entry.get('section', '')
+        content = entry.get('content', '')
+        if content:
+            f.write('\n' + content + '\n')
+
+print(str(len(updates)))
+" "$PENDING_FILE" "$MEMORY_FILE" 2>/dev/null)" || FLUSH_RESULT="0"
+
+if [[ "$FLUSH_RESULT" == "0" ]]; then
+    printf '{}\n'
+    exit 0
+fi
+
+# ── Step 5: Log to _changelog.txt ───────────────────────────────────────────
+
+TIMESTAMP="$(date '+%Y-%m-%d %H:%M')"
+ENTRY="[$TIMESTAMP] MEMORY_UPDATED [auto] | FILE: memory.md | DEST: memory.md | NOTE: Flushed $FLUSH_RESULT pending update(s) via stop hook"
+
+echo "$ENTRY" >> "$CHANGELOG_FILE"
+
+# ── Step 6: Clean up pending file ───────────────────────────────────────────
+
+rm -f "$PENDING_FILE"
+
+# Clean session-cache dir if empty (except vault-path.txt which may still be needed)
+# Only remove pending-memory.json — leave other cache files intact
+
+# ── Step 7: Output confirmation ─────────────────────────────────────────────
+
+CONTEXT="<cortex-memory>Flushed $FLUSH_RESULT pending memory update(s) to vault memory.md.</cortex-memory>"
+ESCAPED="$(escape_for_json "$CONTEXT")"
+
+if [[ -n "${CURSOR_PLUGIN_ROOT:-}" ]]; then
+    # Cursor
+    printf '{"additional_context":"%s"}\n' "$ESCAPED"
+elif [[ -n "${CLAUDE_PLUGIN_ROOT:-}" && -z "${COPILOT_CLI:-}" ]]; then
+    # Claude Code
+    printf '{"hookSpecificOutput":{"hookEventName":"Stop","additionalContext":"%s"}}\n' "$ESCAPED"
+else
+    # Copilot CLI / default
+    printf '{"additionalContext":"%s"}\n' "$ESCAPED"
+fi
