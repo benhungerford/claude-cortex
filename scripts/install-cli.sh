@@ -26,6 +26,14 @@ for f in "$PLUGIN_JSON" "$MARKETPLACE_JSON"; do
   fi
 done
 
+# Install MCP server dependencies
+if [ -f "$PLUGIN_ROOT/mcp-servers/cortex-vault/package.json" ]; then
+  echo "Installing MCP server dependencies..."
+  (cd "$PLUGIN_ROOT/mcp-servers/cortex-vault" && npm install --production --silent)
+  echo "MCP server: cortex-vault"
+  echo
+fi
+
 # Verify Claude Code is installed
 if [ ! -d "$HOME/.claude" ]; then
   echo "WARNING: ~/.claude does not exist. Is Claude Code installed?" >&2
