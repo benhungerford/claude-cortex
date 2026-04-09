@@ -1,0 +1,170 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# user-prompt-submit — Scan user prompts for trigger phrases and inject routing hints.
+# Fired by UserPromptSubmit hook via run-hook.cmd.
+# Reads stdin JSON, extracts user_prompt, pattern-matches against known triggers,
+# and outputs a <cortex-hint> tag if a match is found.
+# All trigger patterns are hardcoded for speed (<100ms target).
+
+# ── Helpers ──────────────────────────────────────────────────────────────────
+
+escape_for_json() {
+    local s="$1"
+    s="${s//\\/\\\\}"
+    s="${s//\"/\\\"}"
+    s="${s//$'\n'/\\n}"
+    s="${s//$'\r'/\\r}"
+    s="${s//$'\t'/\\t}"
+    printf '%s' "$s"
+}
+
+# ── Step 1: Read stdin JSON and extract user_prompt ─────────────────────────
+
+INPUT=$(cat)
+
+USER_PROMPT="$(python3 -c "
+import json, sys
+try:
+    data = json.loads(sys.argv[1])
+    print(data.get('user_prompt', ''))
+except Exception:
+    pass
+" "$INPUT" 2>/dev/null)" || true
+
+# Empty prompt → no match
+if [[ -z "$USER_PROMPT" ]]; then
+    printf '{}\n'
+    exit 0
+fi
+
+# ── Step 2: Lowercase for matching ──────────────────────────────────────────
+
+LOWER="$(printf '%s' "$USER_PROMPT" | tr '[:upper:]' '[:lower:]')"
+
+# ── Step 3: Pattern matching (priority order — first match wins) ────────────
+
+SKILL=""
+CONFIDENCE=""
+TRIGGER_DESC=""
+
+# ── 3a: Hard-route structural signals (transcript detection) ────────────────
+# 20+ lines AND 3+ lines matching "Name: text" speaker-label pattern
+if [[ -z "$SKILL" ]]; then
+    LINE_COUNT="$(printf '%s' "$USER_PROMPT" | wc -l | tr -d ' ')"
+    if [[ "$LINE_COUNT" -ge 20 ]]; then
+        SPEAKER_COUNT="$(printf '%s' "$USER_PROMPT" | grep -cE '^[A-Za-z]+: ' 2>/dev/null || echo 0)"
+        if [[ "$SPEAKER_COUNT" -ge 3 ]]; then
+            SKILL="cortex-process-meeting"
+            CONFIDENCE="high"
+            TRIGGER_DESC="transcript structure detected"
+        fi
+    fi
+fi
+
+# ── 3b: Explicit meeting phrases ────────────────────────────────────────────
+if [[ -z "$SKILL" ]]; then
+    case "$LOWER" in
+        *"process this meeting"*|*"meeting notes:"*|*"from my call with"*|*"here are the notes from"*)
+            SKILL="cortex-process-meeting"
+            CONFIDENCE="high"
+            TRIGGER_DESC="explicit meeting phrase"
+            ;;
+    esac
+fi
+
+# ── 3c: Write-side triggers (beat read-side) ───────────────────────────────
+if [[ -z "$SKILL" ]]; then
+    case "$LOWER" in
+        # Logging triggers
+        *"log that"*|*"log this"*|*"log it"*|*"add this to the project"*|*"add that to "*)
+            SKILL="cortex-update-context"
+            CONFIDENCE="high"
+            TRIGGER_DESC="log/add trigger"
+            ;;
+        # Decision triggers
+        *"we decided"*|*"decision:"*|*"i'm going with"*|*"going to go with"*|*"final answer is"*|*"we're using "*)
+            SKILL="cortex-update-context"
+            CONFIDENCE="high"
+            TRIGGER_DESC="decision trigger"
+            ;;
+        # Blocker triggers
+        *"new blocker"*|*"blocker:"*|*"this is blocking"*|*"blocked by"*|*"can't proceed until"*)
+            SKILL="cortex-update-context"
+            CONFIDENCE="high"
+            TRIGGER_DESC="blocker trigger"
+            ;;
+        # Resolved triggers
+        *"that's resolved"*|*"blocker resolved"*|*"unblocked"*)
+            SKILL="cortex-update-context"
+            CONFIDENCE="high"
+            TRIGGER_DESC="resolved trigger"
+            ;;
+    esac
+fi
+
+# ── 3d: Ingest triggers ────────────────────────────────────────────────────
+if [[ -z "$SKILL" ]]; then
+    case "$LOWER" in
+        *"new project"*|*"start tracking"*|*"scaffold a project"*)
+            SKILL="cortex-ingest-project"
+            CONFIDENCE="high"
+            TRIGGER_DESC="ingest trigger"
+            ;;
+    esac
+fi
+
+# ── 3e: Knowledge triggers ─────────────────────────────────────────────────
+if [[ -z "$SKILL" ]]; then
+    case "$LOWER" in
+        *"worth remembering"*|*"reusable"*|*"add to knowledge base"*|*"save this pattern"*|*"for future projects"*)
+            SKILL="cortex-knowledge"
+            CONFIDENCE="medium"
+            TRIGGER_DESC="knowledge trigger"
+            ;;
+    esac
+fi
+
+# ── 3f: Read-side triggers (lowest priority) ───────────────────────────────
+if [[ -z "$SKILL" ]]; then
+    case "$LOWER" in
+        *"status of"*|*"what's the status"*|*"where are we on"*|*"what's left on"*|*"what's blocking"*|*"any open questions"*)
+            SKILL="cortex-check-status"
+            CONFIDENCE="high"
+            TRIGGER_DESC="status query"
+            ;;
+    esac
+fi
+
+# ── 3g: Register/backfill triggers ─────────────────────────────────────────
+if [[ -z "$SKILL" ]]; then
+    case "$LOWER" in
+        *"register this repo"*|*"link this folder"*|*"link this repo"*|*"scan for repos"*|*"backfill repos"*|*"find my project folders"*)
+            SKILL="cortex-register-repo"
+            CONFIDENCE="high"
+            TRIGGER_DESC="register/backfill trigger"
+            ;;
+    esac
+fi
+
+# ── Step 4: Output ──────────────────────────────────────────────────────────
+
+if [[ -z "$SKILL" ]]; then
+    printf '{}\n'
+    exit 0
+fi
+
+HINT="<cortex-hint>likely-skill: $SKILL | confidence: $CONFIDENCE | trigger: \"$TRIGGER_DESC\"</cortex-hint>"
+ESCAPED="$(escape_for_json "$HINT")"
+
+# Platform-appropriate JSON output
+if [[ -n "${CURSOR_PLUGIN_ROOT:-}" ]]; then
+    # Cursor
+    printf '{"additional_context":"%s"}\n' "$ESCAPED"
+elif [[ -n "${CLAUDE_PLUGIN_ROOT:-}" && -z "${COPILOT_CLI:-}" ]]; then
+    # Claude Code
+    printf '{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"%s"}}\n' "$ESCAPED"
+else
+    # Copilot CLI / default
+    printf '{"additionalContext":"%s"}\n' "$ESCAPED"
+fi
