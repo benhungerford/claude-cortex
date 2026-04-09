@@ -482,3 +482,207 @@ Unique meeting, no series.
     assert.ok(!fileContent.includes('*Previous:*'), 'one-off note should not have Previous link');
   });
 });
+
+// ---------------------------------------------------------------------------
+// check_dormant_features
+// ---------------------------------------------------------------------------
+
+describe('check_dormant_features', () => {
+  const tool = require('../tools/check-dormant-features.js');
+  let tmpVault;
+
+  beforeEach(() => { tmpVault = copyFixtureVault(); });
+  afterEach(() => { rmTmpDir(tmpVault); });
+
+  test('returns ready and not_ready lists — fixture has 1 project and ~4 dates so both features not_ready', async () => {
+    const result = await tool.handler({}, tmpVault);
+
+    assert.equal(result.isError, undefined, 'should not be an error');
+
+    const data = JSON.parse(result.content[0].text);
+    assert.ok(Array.isArray(data.ready), 'ready should be an array');
+    assert.ok(Array.isArray(data.not_ready), 'not_ready should be an array');
+
+    // Fixture has 1 active project (need 3+) and 4 unique dates (need 10+)
+    // Both features should be not_ready
+    assert.equal(data.ready.length, 0, 'no features should be ready with fixture data');
+    assert.equal(data.not_ready.length, 2, 'both features should be not_ready');
+
+    const featureNames = data.not_ready.map(f => f.feature);
+    assert.ok(featureNames.includes('weekly_review'), 'weekly_review should be not_ready');
+    assert.ok(featureNames.includes('daily_briefing'), 'daily_briefing should be not_ready');
+  });
+
+  test('each entry has feature, signal, and evidence fields', async () => {
+    const result = await tool.handler({}, tmpVault);
+    const data = JSON.parse(result.content[0].text);
+
+    for (const entry of [...data.ready, ...data.not_ready]) {
+      assert.ok('feature' in entry, 'entry should have feature');
+      assert.ok('signal' in entry, 'entry should have signal');
+      assert.ok('evidence' in entry, 'entry should have evidence');
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// list_projects
+// ---------------------------------------------------------------------------
+
+describe('list_projects', () => {
+  const tool = require('../tools/list-projects.js');
+  let tmpVault;
+
+  beforeEach(() => { tmpVault = copyFixtureVault(); });
+  afterEach(() => { rmTmpDir(tmpVault); });
+
+  test('returns all projects — fixture has 1 project with correct fields', async () => {
+    const result = await tool.handler({}, tmpVault);
+
+    assert.equal(result.isError, undefined, 'should not be an error');
+
+    const projects = JSON.parse(result.content[0].text);
+    assert.ok(Array.isArray(projects), 'result should be an array');
+    assert.equal(projects.length, 1, 'fixture has exactly 1 project');
+
+    const p = projects[0];
+    assert.equal(p.project, 'Test Project', 'project name should match');
+    assert.equal(p.client, 'Test Client', 'client should match');
+    assert.equal(p.status, 'Active Build', 'status should match');
+    assert.equal(p.open_questions, 2, 'should count 2 open questions');
+    assert.equal(p.blockers, 0, 'should count 0 blockers (no Blockers section)');
+    assert.ok('updated' in p, 'should have updated field');
+    assert.ok('vault_path' in p, 'should have vault_path field');
+  });
+
+  test('status_filter for "Paused" returns empty array', async () => {
+    const result = await tool.handler({ status_filter: 'Paused' }, tmpVault);
+
+    assert.equal(result.isError, undefined, 'should not be an error');
+
+    const projects = JSON.parse(result.content[0].text);
+    assert.equal(projects.length, 0, 'no projects should match Paused status');
+  });
+
+  test('status_filter for "Active Build" returns the fixture project', async () => {
+    const result = await tool.handler({ status_filter: 'Active Build' }, tmpVault);
+
+    assert.equal(result.isError, undefined, 'should not be an error');
+
+    const projects = JSON.parse(result.content[0].text);
+    assert.equal(projects.length, 1, 'one project matches Active Build');
+    assert.equal(projects[0].project, 'Test Project');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// open_question
+// ---------------------------------------------------------------------------
+
+describe('open_question', () => {
+  const tool = require('../tools/open-question.js');
+  let tmpVault;
+
+  beforeEach(() => { tmpVault = copyFixtureVault(); });
+  afterEach(() => { rmTmpDir(tmpVault); });
+
+  test('adds a new open question to the project context', async () => {
+    const result = await tool.handler(
+      {
+        project_path: 'Work/TBL/Test Client/Test Project',
+        action: 'add',
+        text: 'What CDN should we use?'
+      },
+      tmpVault
+    );
+
+    assert.equal(result.isError, undefined, 'should not be an error');
+
+    const contextPath = path.join(tmpVault, 'Work/TBL/Test Client/Test Project/Test Project — Project Context.md');
+    const contents = fs.readFileSync(contextPath, 'utf8');
+    assert.ok(contents.includes('- [ ] What CDN should we use?'), 'new question should appear unchecked');
+  });
+
+  test('resolves an existing question by substring match', async () => {
+    const result = await tool.handler(
+      {
+        project_path: 'Work/TBL/Test Client/Test Project',
+        action: 'resolve',
+        text: 'API integration',
+        resolution: 'Using REST API with OAuth2'
+      },
+      tmpVault
+    );
+
+    assert.equal(result.isError, undefined, 'should not be an error');
+
+    const contextPath = path.join(tmpVault, 'Work/TBL/Test Client/Test Project/Test Project — Project Context.md');
+    const contents = fs.readFileSync(contextPath, 'utf8');
+    assert.ok(!contents.includes('- [ ] How should we handle the API integration?'), 'question should no longer be unchecked');
+    assert.ok(contents.includes('- [x]'), 'resolved question should be checked');
+    assert.ok(contents.includes('Using REST API with OAuth2'), 'resolution text should appear');
+  });
+
+  test('returns error when resolving without resolution text', async () => {
+    const result = await tool.handler(
+      {
+        project_path: 'Work/TBL/Test Client/Test Project',
+        action: 'resolve',
+        text: 'API integration'
+      },
+      tmpVault
+    );
+
+    assert.equal(result.isError, true, 'should be an error');
+    assert.ok(result.content[0].text.includes('resolution'), 'error should mention resolution');
+  });
+
+  test('returns error when no matching question found', async () => {
+    const result = await tool.handler(
+      {
+        project_path: 'Work/TBL/Test Client/Test Project',
+        action: 'resolve',
+        text: 'nonexistent question nobody would ask',
+        resolution: 'some answer'
+      },
+      tmpVault
+    );
+
+    assert.equal(result.isError, true, 'should be an error');
+    assert.ok(result.content[0].text.includes('No matching'), 'error should mention no match');
+  });
+
+  test('bumps updated date in frontmatter after add', async () => {
+    const today = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const todayStr = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
+
+    await tool.handler(
+      {
+        project_path: 'Work/TBL/Test Client/Test Project',
+        action: 'add',
+        text: 'New question for date test'
+      },
+      tmpVault
+    );
+
+    const contextPath = path.join(tmpVault, 'Work/TBL/Test Client/Test Project/Test Project — Project Context.md');
+    const contents = fs.readFileSync(contextPath, 'utf8');
+    assert.ok(contents.includes(todayStr), 'updated date should be bumped to today');
+  });
+
+  test('appends entry to _changelog.txt', async () => {
+    await tool.handler(
+      {
+        project_path: 'Work/TBL/Test Client/Test Project',
+        action: 'add',
+        text: 'Changelog test question'
+      },
+      tmpVault
+    );
+
+    const changelogPath = path.join(tmpVault, '_changelog.txt');
+    const contents = fs.readFileSync(changelogPath, 'utf8');
+    assert.ok(contents.includes('Changelog test question'), 'changelog should mention the question text');
+  });
+});
