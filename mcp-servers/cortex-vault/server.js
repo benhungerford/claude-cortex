@@ -19,6 +19,9 @@ registerTool(require('./tools/append-changelog.js'));
 registerTool(require('./tools/update-moc.js'));
 registerTool(require('./tools/read-hub.js'));
 registerTool(require('./tools/find-project-by-cwd.js'));
+registerTool(require('./tools/validate-frontmatter.js'));
+registerTool(require('./tools/scaffold-project.js'));
+registerTool(require('./tools/thread-meeting.js'));
 
 const server = new Server(
   { name: 'cortex-vault', version: '1.0.0' },

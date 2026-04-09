@@ -219,3 +219,266 @@ describe('find_project_by_cwd', () => {
     assert.equal(data, null, 'should return null for unregistered path');
   });
 });
+
+// ---------------------------------------------------------------------------
+// validate_frontmatter
+// ---------------------------------------------------------------------------
+
+describe('validate_frontmatter', () => {
+  const tool = require('../tools/validate-frontmatter.js');
+  let tmpVault;
+
+  beforeEach(() => { tmpVault = copyFixtureVault(); });
+  afterEach(() => { rmTmpDir(tmpVault); });
+
+  test('validates a correct file as valid', async () => {
+    const result = await tool.handler(
+      { file_path: 'Work/TBL/Test Client/Test Project/Test Project — Project Context.md' },
+      tmpVault
+    );
+
+    assert.equal(result.isError, undefined, 'should not be an error');
+    const data = JSON.parse(result.content[0].text);
+    assert.equal(data.valid, true, 'file should be valid');
+    assert.deepEqual(data.errors, [], 'should have no errors');
+  });
+
+  test('detects missing updated field', async () => {
+    // Create a file missing the `updated` field
+    const badContent = `---
+type: project-context
+project: "Bad Project"
+client: "Test Client"
+status: "Active Build"
+created: 2026-04-01
+tags:
+  - "#type/project-context"
+---
+
+# Bad Project
+`;
+    const badFilePath = path.join(tmpVault, 'Work/TBL/Test Client/bad-note.md');
+    fs.writeFileSync(badFilePath, badContent, 'utf8');
+
+    const result = await tool.handler(
+      { file_path: 'Work/TBL/Test Client/bad-note.md' },
+      tmpVault
+    );
+
+    assert.equal(result.isError, undefined, 'handler should not error');
+    const data = JSON.parse(result.content[0].text);
+    assert.equal(data.valid, false, 'file should be invalid');
+    assert.ok(data.errors.some(e => e.includes('updated')), 'errors should mention missing updated field');
+  });
+
+  test('detects null values in tags array (unquoted # tags)', async () => {
+    // js-yaml parses unquoted #foo as a comment → null in array
+    // Simulate a file that was already parsed with a null tag
+    const badContent = `---
+created: 2026-04-01
+updated: 2026-04-06
+tags:
+  - "#type/meeting-notes"
+  -
+---
+
+# Null Tag Test
+`;
+    const badFilePath = path.join(tmpVault, 'Work/TBL/Test Client/null-tag-note.md');
+    fs.writeFileSync(badFilePath, badContent, 'utf8');
+
+    const result = await tool.handler(
+      { file_path: 'Work/TBL/Test Client/null-tag-note.md' },
+      tmpVault
+    );
+
+    assert.equal(result.isError, undefined, 'handler should not error');
+    const data = JSON.parse(result.content[0].text);
+    assert.equal(data.valid, false, 'file with null tag should be invalid');
+    assert.ok(data.errors.some(e => e.includes('null')), 'errors should mention null tag');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// scaffold_project
+// ---------------------------------------------------------------------------
+
+describe('scaffold_project', () => {
+  const tool = require('../tools/scaffold-project.js');
+  let tmpVault;
+
+  beforeEach(() => { tmpVault = copyFixtureVault(); });
+  afterEach(() => { rmTmpDir(tmpVault); });
+
+  test('creates all 6 required project files', async () => {
+    const result = await tool.handler(
+      { client: 'Test Client', project: 'New Project', category: 'TBL' },
+      tmpVault
+    );
+
+    assert.equal(result.isError, undefined, 'should not be an error');
+
+    const projectBase = path.join(tmpVault, 'Work/TBL/Test Client/New Project');
+    assert.ok(fs.existsSync(path.join(projectBase, '_MOC.md')), '_MOC.md should exist');
+    assert.ok(fs.existsSync(path.join(projectBase, 'New Project — Project Context.md')), 'Project Context should exist');
+    assert.ok(fs.existsSync(path.join(projectBase, 'Tech Stack & Architecture.md')), 'Tech Stack should exist');
+    assert.ok(fs.existsSync(path.join(projectBase, 'Design System.md')), 'Design System should exist');
+    assert.ok(fs.existsSync(path.join(projectBase, 'Changelog.md')), 'Changelog should exist');
+    assert.ok(fs.existsSync(path.join(projectBase, 'Notes/_MOC.md')), 'Notes/_MOC.md should exist');
+  });
+
+  test('creates client folder structure if client does not exist', async () => {
+    const result = await tool.handler(
+      { client: 'Brand New Client', project: 'First Project', category: 'TBL' },
+      tmpVault
+    );
+
+    assert.equal(result.isError, undefined, 'should not be an error');
+
+    const clientBase = path.join(tmpVault, 'Work/TBL/Brand New Client');
+    assert.ok(fs.existsSync(path.join(clientBase, '_MOC.md')), 'client _MOC.md should exist');
+    assert.ok(fs.existsSync(path.join(clientBase, 'Brand New Client — Client Context.md')), 'Client Context should exist');
+    assert.ok(fs.existsSync(path.join(clientBase, 'Meetings/_MOC.md')), 'Meetings/_MOC.md should exist');
+  });
+
+  test('uses brand folder for personal projects', async () => {
+    const result = await tool.handler(
+      { client: 'Ben Hungerford', project: 'Web App Build', category: 'Personal', brand: 'The Workout App' },
+      tmpVault
+    );
+
+    assert.equal(result.isError, undefined, 'should not be an error');
+
+    const projectBase = path.join(tmpVault, 'Work/Personal/Ben Hungerford/The Workout App/Web App Build');
+    assert.ok(fs.existsSync(path.join(projectBase, '_MOC.md')), 'project _MOC.md should exist at brand path');
+    assert.ok(fs.existsSync(path.join(projectBase, 'Web App Build — Project Context.md')), 'Project Context should exist');
+  });
+
+  test('sets correct frontmatter on project context', async () => {
+    const result = await tool.handler(
+      { client: 'Test Client', project: 'Typed Project', category: 'TBL', status: 'Active Build', domain: 'shopify' },
+      tmpVault
+    );
+
+    assert.equal(result.isError, undefined, 'should not be an error');
+
+    const contextPath = path.join(tmpVault, 'Work/TBL/Test Client/Typed Project/Typed Project — Project Context.md');
+    const content = fs.readFileSync(contextPath, 'utf8');
+
+    assert.ok(content.includes('status: Active Build'), 'status should be Active Build');
+    assert.ok(content.includes('"#type/project-context"'), 'tags should include project-context (quoted)');
+    assert.ok(content.includes('"#domain/shopify"'), 'tags should include domain/shopify (quoted)');
+  });
+
+  test('logs CREATED entries to _changelog.txt', async () => {
+    await tool.handler(
+      { client: 'Test Client', project: 'Logged Project', category: 'TBL' },
+      tmpVault
+    );
+
+    const changelogPath = path.join(tmpVault, '_changelog.txt');
+    const contents = fs.readFileSync(changelogPath, 'utf8');
+
+    assert.ok(contents.includes('CREATED'), 'changelog should have CREATED entries');
+    assert.ok(contents.includes('Logged Project'), 'changelog should mention the project name');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// thread_meeting
+// ---------------------------------------------------------------------------
+
+describe('thread_meeting', () => {
+  const tool = require('../tools/thread-meeting.js');
+  let tmpVault;
+
+  beforeEach(() => { tmpVault = copyFixtureVault(); });
+  afterEach(() => { rmTmpDir(tmpVault); });
+
+  test('threads a 4th meeting into an existing 3-note series', async () => {
+    const notesDir = path.join(tmpVault, 'Work/TBL/Test Client/Test Project/Notes');
+    const newFile = '2026-03-22 Client Check-in.md';
+
+    // Create the new meeting note file
+    const newContent = `---
+created: 2026-03-22T14:00
+updated: 2026-03-22T15:00
+tags:
+  - "#type/meeting-notes"
+---
+
+# 2026-03-22 Client Check-in
+
+Fourth meeting.
+
+---
+*Related:* [[_MOC]]
+`;
+    fs.writeFileSync(path.join(notesDir, newFile), newContent, 'utf8');
+
+    const result = await tool.handler(
+      { notes_dir: 'Work/TBL/Test Client/Test Project/Notes', new_file: newFile },
+      tmpVault
+    );
+
+    assert.equal(result.isError, undefined, 'should not be an error');
+    const data = JSON.parse(result.content[0].text);
+    assert.equal(data.threaded, true, 'should have threaded');
+
+    // New note should have *Previous:* pointing to the prior note
+    const newNoteContent = fs.readFileSync(path.join(notesDir, newFile), 'utf8');
+    assert.ok(
+      newNoteContent.includes('*Previous:* [[2026-03-15 Client Check-in]]'),
+      'new note should have Previous link to 2026-03-15'
+    );
+
+    // Prior note (2026-03-15) should now have *Next:* pointing to the new note
+    const priorContent = fs.readFileSync(
+      path.join(notesDir, '2026-03-15 Client Check-in.md'),
+      'utf8'
+    );
+    assert.ok(
+      priorContent.includes('*Next:* [[2026-03-22 Client Check-in]]'),
+      '2026-03-15 note should have Next link to 2026-03-22'
+    );
+  });
+
+  test('skips threading for a one-off meeting with a unique title', async () => {
+    const notesDir = path.join(tmpVault, 'Work/TBL/Test Client/Test Project/Notes');
+    const oneOffFile = '2026-03-22 One-Off Strategy Session.md';
+
+    // Create the one-off file
+    const oneOffContent = `---
+created: 2026-03-22T14:00
+updated: 2026-03-22T15:00
+tags:
+  - "#type/meeting-notes"
+---
+
+# 2026-03-22 One-Off Strategy Session
+
+Unique meeting, no series.
+
+---
+*Related:* [[_MOC]]
+`;
+    fs.writeFileSync(path.join(notesDir, oneOffFile), oneOffContent, 'utf8');
+
+    const result = await tool.handler(
+      { notes_dir: 'Work/TBL/Test Client/Test Project/Notes', new_file: oneOffFile },
+      tmpVault
+    );
+
+    assert.equal(result.isError, undefined, 'should not be an error');
+    // Result should NOT be threaded — message should mention skipping
+    const text = result.content[0].text;
+    // It should either say "Skipping" or not have threaded:true
+    const isSkipped = text.includes('Skipping') || text.includes('skip') ||
+      (text.startsWith('{') && JSON.parse(text).threaded !== true);
+    assert.ok(isSkipped, 'one-off meeting should not be threaded');
+
+    // The file should not have a *Previous:* link added
+    const fileContent = fs.readFileSync(path.join(notesDir, oneOffFile), 'utf8');
+    assert.ok(!fileContent.includes('*Previous:*'), 'one-off note should not have Previous link');
+  });
+});
