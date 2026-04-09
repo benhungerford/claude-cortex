@@ -1,0 +1,5 @@
+{
+  "session_id": "test-session-001",
+  "hook_event_name": "UserPromptSubmit",
+  "user_prompt": "Here are the notes from my call with Ashley about the FKT project:\n\nAshley: Let's review where we are on the PO system.\nBen: The form is built, just need the success page.\nAshley: Great, let's target next week for QA.\n\nCan you process this meeting?"
+}

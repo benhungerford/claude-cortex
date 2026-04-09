@@ -1,0 +1,10 @@
+{
+  "session_id": "test-session-001",
+  "hook_event_name": "PostToolUse",
+  "tool_name": "Write",
+  "tool_input": {
+    "file_path": "/Users/benhungerford/Documents/some-code-repo/src/index.js",
+    "content": "console.log('hello')"
+  },
+  "cwd": "/Users/benhungerford/Documents/some-code-repo"
+}
