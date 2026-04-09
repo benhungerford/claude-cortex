@@ -1,0 +1,247 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# session-start — Load vault context before the model's first turn.
+# Fired by SessionStart hook via run-hook.cmd.
+# Reads personality.md, _changelog.txt, _Inbox/ to build a <cortex-session> block.
+# If config is missing or vault doesn't exist, exits silently (onboarding mode).
+
+# ── Resolve paths ────────────────────────────────────────────────────────────
+
+PLUGIN_DATA="${CLAUDE_PLUGIN_DATA:-$HOME/.claude/cortex/plugin-data}"
+if [[ -n "${CLAUDE_PLUGIN_ROOT:-}" ]]; then
+    PLUGIN_ROOT="$CLAUDE_PLUGIN_ROOT"
+else
+    PLUGIN_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+fi
+CONFIG_FILE="$HOME/.claude/cortex/config.json"
+
+# ── Helpers ──────────────────────────────────────────────────────────────────
+
+escape_for_json() {
+    local s="$1"
+    s="${s//\\/\\\\}"
+    s="${s//\"/\\\"}"
+    s="${s//$'\n'/\\n}"
+    s="${s//$'\r'/\\r}"
+    s="${s//$'\t'/\\t}"
+    printf '%s' "$s"
+}
+
+# Extract a top-level string value from a JSON file.
+# Uses python3 with grep fallback.
+json_get() {
+    local file="$1" key="$2"
+    if command -v python3 &>/dev/null; then
+        python3 -c "
+import json, sys
+try:
+    with open('$file') as f:
+        d = json.load(f)
+    v = d.get('$key', '')
+    print(v if v else '')
+except Exception:
+    pass
+" 2>/dev/null
+    else
+        grep -o "\"${key}\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" "$file" 2>/dev/null \
+            | head -1 \
+            | sed 's/.*:[[:space:]]*"\(.*\)"/\1/'
+    fi
+}
+
+# ── Step 1: Read vault_path from config ──────────────────────────────────────
+
+if [[ ! -f "$CONFIG_FILE" ]]; then
+    exit 0
+fi
+
+VAULT_PATH="$(json_get "$CONFIG_FILE" "vault_path")"
+if [[ -z "$VAULT_PATH" || ! -d "$VAULT_PATH" ]]; then
+    exit 0
+fi
+
+# ── Step 2: Read personality.md ──────────────────────────────────────────────
+
+PERSONALITY_FILE="$VAULT_PATH/personality.md"
+if [[ ! -f "$PERSONALITY_FILE" ]]; then
+    exit 0
+fi
+
+# Extract identity fields from YAML frontmatter using python3 (robust) with
+# grep fallback for name/role.
+if command -v python3 &>/dev/null; then
+    IFS=$'\t' read -r USER_NAME USER_ROLE < <(python3 -c "
+import re, sys
+
+text = open('$PERSONALITY_FILE').read()
+m = re.search(r'^---\s*\n(.*?)\n---', text, re.DOTALL)
+if not m:
+    print(' ')
+    sys.exit()
+
+fm = m.group(1)
+
+def get_val(key, block):
+    pat = re.compile(r'^\s*' + key + r':\s*(.+)$', re.MULTILINE)
+    hit = pat.search(block)
+    if not hit:
+        return ''
+    val = hit.group(1).strip()
+    if len(val) >= 2 and val[0] == '\"' and val[-1] == '\"':
+        val = val[1:-1]
+    return val
+
+# Identity block
+ident_m = re.search(r'identity:\s*\n((?:\s{2,}.*\n)*)', fm)
+ident = ident_m.group(1) if ident_m else fm
+
+name = get_val('name', ident)
+role = get_val('role', ident)
+print(name + '\t' + role)
+" 2>/dev/null || echo "	")
+else
+    USER_NAME="$(grep -A5 'identity:' "$PERSONALITY_FILE" 2>/dev/null | grep 'name:' | head -1 | sed 's/.*name:[[:space:]]*"\{0,1\}\([^"]*\)"\{0,1\}/\1/' | xargs)"
+    USER_ROLE="$(grep -A5 'identity:' "$PERSONALITY_FILE" 2>/dev/null | grep 'role:' | head -1 | sed 's/.*role:[[:space:]]*"\{0,1\}\([^"]*\)"\{0,1\}/\1/' | xargs)"
+fi
+
+USER_NAME="${USER_NAME:-Unknown}"
+USER_ROLE="${USER_ROLE:-Unknown}"
+
+# ── Step 3: Extract bucket names and types ───────────────────────────────────
+
+ACTIVE_PROJECTS=""
+if command -v python3 &>/dev/null; then
+    ACTIVE_PROJECTS="$(python3 -c "
+import re, sys
+
+text = open('$PERSONALITY_FILE').read()
+m = re.search(r'^---\s*\n(.*?)\n---', text, re.DOTALL)
+if not m:
+    sys.exit()
+
+fm = m.group(1)
+
+# Extract only the buckets: section (not work_categories or other arrays)
+# Find buckets: key and grab everything until the next key at the same or lesser indent
+bm = re.search(r'  buckets:\s*\n((?:(?:    | {6,}).*\n)*)', fm)
+if not bm:
+    sys.exit()
+
+buckets_block = bm.group(1)
+
+# Find bucket entries within the buckets section only
+entries = re.findall(r'-\s+name:\s*\"([^\"]+)\".*?type:\s*\"([^\"]+)\"', buckets_block, re.DOTALL)
+parts = []
+for name, typ in entries:
+    parts.append(name + ' (' + typ + ')')
+print(', '.join(parts))
+" 2>/dev/null || echo "")"
+fi
+
+# ── Step 4: Read last 15 lines of _changelog.txt ────────────────────────────
+
+CHANGELOG_FILE="$VAULT_PATH/_changelog.txt"
+RECENT_ACTIVITY=""
+if [[ -f "$CHANGELOG_FILE" ]]; then
+    RECENT_ACTIVITY="$(tail -15 "$CHANGELOG_FILE" 2>/dev/null || true)"
+fi
+
+# ── Step 5: Count inbox items ────────────────────────────────────────────────
+
+INBOX_DIR="$VAULT_PATH/_Inbox"
+INBOX_COUNT=0
+if [[ -d "$INBOX_DIR" ]]; then
+    INBOX_COUNT="$(find "$INBOX_DIR" -maxdepth 1 -name '*.md' -type f 2>/dev/null | wc -l | tr -d ' ')"
+fi
+
+# ── Step 6: Cache trigger phrases ────────────────────────────────────────────
+
+CACHE_DIR="$PLUGIN_DATA/session-cache"
+mkdir -p "$CACHE_DIR"
+
+TRIGGER_SRC="$PLUGIN_ROOT/references/trigger-phrases.md"
+if [[ -f "$TRIGGER_SRC" ]]; then
+    cp "$TRIGGER_SRC" "$CACHE_DIR/trigger-phrases.txt"
+fi
+
+# ── Step 7: Cache vault path ────────────────────────────────────────────────
+
+printf '%s' "$VAULT_PATH" > "$CACHE_DIR/vault-path.txt"
+
+# ── Step 8: Check dormant feature suggestion ─────────────────────────────────
+
+FEATURE_SUGGESTION=""
+if [[ -f "$CHANGELOG_FILE" ]]; then
+    CHANGELOG_LINES="$(wc -l < "$CHANGELOG_FILE" | tr -d ' ')"
+    if [[ "$CHANGELOG_LINES" -ge 50 ]]; then
+        if grep -q 'weekly_review' "$PERSONALITY_FILE" 2>/dev/null; then
+            # Check it's actually in the dormant list, not active
+            if command -v python3 &>/dev/null; then
+                IS_DORMANT="$(python3 -c "
+import re
+text = open('$PERSONALITY_FILE').read()
+m = re.search(r'^---\s*\n(.*?)\n---', text, re.DOTALL)
+if not m:
+    print('no')
+else:
+    fm = m.group(1)
+    # Find the dormant list
+    dm = re.search(r'dormant:\s*\n((?:\s+- .*\n)*)', fm)
+    if dm and 'weekly_review' in dm.group(1):
+        print('yes')
+    else:
+        print('no')
+" 2>/dev/null || echo "no")"
+            else
+                IS_DORMANT="yes"
+            fi
+            if [[ "$IS_DORMANT" == "yes" ]]; then
+                FEATURE_SUGGESTION="Feature suggestion: weekly_review may be ready to activate (changelog has ${CHANGELOG_LINES}+ entries)"
+            fi
+        fi
+    fi
+fi
+
+# ── Step 9: Build the output ────────────────────────────────────────────────
+
+SESSION_BLOCK="<cortex-session>
+Vault: $VAULT_PATH
+User: $USER_NAME ($USER_ROLE)"
+
+if [[ -n "$ACTIVE_PROJECTS" ]]; then
+    SESSION_BLOCK="$SESSION_BLOCK
+Active projects: $ACTIVE_PROJECTS"
+fi
+
+SESSION_BLOCK="$SESSION_BLOCK
+Inbox: $INBOX_COUNT unsorted item(s)"
+
+if [[ -n "$RECENT_ACTIVITY" ]]; then
+    SESSION_BLOCK="$SESSION_BLOCK
+Recent activity:
+$RECENT_ACTIVITY"
+fi
+
+if [[ -n "$FEATURE_SUGGESTION" ]]; then
+    SESSION_BLOCK="$SESSION_BLOCK
+$FEATURE_SUGGESTION"
+fi
+
+SESSION_BLOCK="$SESSION_BLOCK
+</cortex-session>"
+
+ESCAPED="$(escape_for_json "$SESSION_BLOCK")"
+
+# ── Step 10: Output platform-appropriate JSON ────────────────────────────────
+
+if [[ -n "${CURSOR_PLUGIN_ROOT:-}" ]]; then
+    # Cursor
+    printf '{"additional_context":"%s"}\n' "$ESCAPED"
+elif [[ -n "${CLAUDE_PLUGIN_ROOT:-}" && -z "${COPILOT_CLI:-}" ]]; then
+    # Claude Code
+    printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"%s"}}\n' "$ESCAPED"
+else
+    # Copilot CLI / default
+    printf '{"additionalContext":"%s"}\n' "$ESCAPED"
+fi
