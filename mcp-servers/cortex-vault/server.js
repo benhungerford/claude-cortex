@@ -5,8 +5,17 @@ const {
   CallToolRequestSchema
 } = require('@modelcontextprotocol/sdk/types.js');
 
-// Tool imports — each added as implemented
 const tools = [];
+
+function registerTool(def) {
+  if (!def.name || !def.description || !def.inputSchema || !def.handler) {
+    throw new Error(`registerTool: missing required field in "${def.name || 'unknown'}"`);
+  }
+  tools.push(def);
+}
+
+// Tool imports — each added as implemented
+// registerTool(require('./tools/append-changelog.js'));
 
 const server = new Server(
   { name: 'cortex-vault', version: '1.0.0' },
@@ -33,6 +42,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   try {
     return await tool.handler(args || {});
   } catch (err) {
+    console.error(`[cortex-vault] Error in tool "${name}":`, err);
     return {
       content: [{ type: 'text', text: `Error in ${name}: ${err.message}` }],
       isError: true
