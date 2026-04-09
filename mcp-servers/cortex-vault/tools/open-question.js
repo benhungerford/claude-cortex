@@ -4,7 +4,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { getVaultPath } = require('../lib/vault-path.js');
 const { readFile, writeFile, appendFile } = require('../lib/file-ops.js');
-const { extractFrontmatter, replaceFrontmatter } = require('../lib/yaml.js');
+const { extractFrontmatter, stringifyYaml } = require('../lib/yaml.js');
 
 function formatTimestamp(date) {
   const pad = (n) => String(n).padStart(2, '0');
@@ -167,17 +167,7 @@ async function handler(args, vaultOverride) {
   const today = todayDateStr();
   const updatedFrontmatter = { ...frontmatter, updated: today };
 
-  // Reconstruct file with updated frontmatter and new body
-  const newContent = replaceFrontmatter(`---\n---\n${newBody}`, updatedFrontmatter).replace(
-    /^---\n---\n/,
-    ''
-  );
-
-  // Actually build it properly: replaceFrontmatter needs a full file string
-  const updatedFile = replaceFrontmatter(fileContent, updatedFrontmatter);
-  // But we also need the updated body — replaceFrontmatter uses body from the original.
-  // We need to rebuild with both new frontmatter AND new body.
-  const { stringifyYaml } = require('../lib/yaml.js');
+  // Rebuild with both new frontmatter AND new body
   const yamlStr = stringifyYaml(updatedFrontmatter).trimEnd();
   const finalContent = `---\n${yamlStr}\n---\n${newBody}`;
 

@@ -145,7 +145,7 @@ function evaluateSignal(signal, vaultPath) {
 }
 
 async function handler(args, vaultOverride) {
-  const vault = vaultOverride || getVaultPath();
+  const vault = args.vault_path || vaultOverride || getVaultPath();
   if (!vault) {
     return {
       content: [{ type: 'text', text: 'Vault path not configured.' }],

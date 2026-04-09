@@ -106,7 +106,7 @@ async function handler(args, vaultOverride) {
       launch: frontmatter.launch || null,
       open_questions: countUnchecked(body, 'Open Questions'),
       blockers: countUnchecked(body, 'Blockers'),
-      vault_path: dirRel
+      path: dirRel
     });
   }
 

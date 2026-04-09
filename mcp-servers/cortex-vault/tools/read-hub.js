@@ -51,6 +51,16 @@ function extractOpenQuestions(body) {
     .map((line) => line.replace(/^- \[ \]\s*/, '').trim());
 }
 
+function extractBlockers(body) {
+  const sectionContent = extractSection(body, 'Blockers');
+  if (!sectionContent) return [];
+
+  return sectionContent
+    .split('\n')
+    .filter((line) => line.match(/^- \[ \]/))
+    .map((line) => line.replace(/^- \[ \]\s*/, '').trim());
+}
+
 async function handler(args, vaultOverride) {
   const { project_path } = args;
 
@@ -89,6 +99,7 @@ async function handler(args, vaultOverride) {
     status: frontmatter?.status || null,
     launch: frontmatter?.launch || null,
     open_questions: extractOpenQuestions(body),
+    blockers: extractBlockers(body),
     current_phase: extractSection(body, 'Current Phase') || null,
     key_decisions: extractSection(body, 'Key Decisions') || null,
     file: contextFileName

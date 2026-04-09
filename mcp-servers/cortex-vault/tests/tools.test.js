@@ -552,7 +552,7 @@ describe('list_projects', () => {
     assert.equal(p.open_questions, 2, 'should count 2 open questions');
     assert.equal(p.blockers, 0, 'should count 0 blockers (no Blockers section)');
     assert.ok('updated' in p, 'should have updated field');
-    assert.ok('vault_path' in p, 'should have vault_path field');
+    assert.ok('path' in p, 'should have path field');
   });
 
   test('status_filter for "Paused" returns empty array', async () => {
