@@ -25,6 +25,18 @@ The full playbook lives in `workflows/process-meeting.md`.
 
 See rows 12–14 in `references/trigger-phrases.md`.
 
+## MCP Tool Preferences
+
+When the `cortex-vault` MCP server is available (tools prefixed with `mcp__cortex-vault__`), prefer these tools over manual file operations:
+
+| Instead of... | Use MCP tool |
+|---|---|
+| Manually detecting meeting series and updating prev/next links | `mcp__cortex-vault__thread_meeting` |
+| Manually adding the new note to the folder's _MOC.md | `mcp__cortex-vault__update_moc` |
+| Manually formatting and appending entries to _changelog.txt | `mcp__cortex-vault__append_changelog` |
+
+If the MCP tools are not available (Desktop/Cowork without the server), fall back to the manual approach described in the steps below.
+
 ## Procedure
 
 Run `workflows/process-meeting.md`. The workflow covers:

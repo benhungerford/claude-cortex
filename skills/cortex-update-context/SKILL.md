@@ -26,6 +26,19 @@ The full playbook lives in `workflows/update-context.md`.
 
 See rows 6–9 in `references/trigger-phrases.md`.
 
+## MCP Tool Preferences
+
+When the `cortex-vault` MCP server is available (tools prefixed with `mcp__cortex-vault__`), prefer these tools over manual file operations:
+
+| Instead of... | Use MCP tool |
+|---|---|
+| Manually adding or resolving open questions on a project hub | `mcp__cortex-vault__open_question` |
+| Manually formatting and appending entries to _changelog.txt | `mcp__cortex-vault__append_changelog` |
+| Manually adding entries to a folder's _MOC.md | `mcp__cortex-vault__update_moc` |
+| Manually validating frontmatter conventions after editing | `mcp__cortex-vault__validate_frontmatter` |
+
+If the MCP tools are not available (Desktop/Cowork without the server), fall back to the manual approach described in the steps below.
+
 ## Procedure
 
 Run `workflows/update-context.md`. The workflow covers:

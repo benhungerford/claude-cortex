@@ -26,6 +26,19 @@ Make Claude vault-aware before the user finishes their first sentence. Every oth
 | cwd | Process working directory |
 | Repo registry | `<vault_path>/.claude/cortex/registry.json` (via `workflows/resolve-cwd.md`) |
 
+## MCP Tool Preferences
+
+When the `cortex-vault` MCP server is available (tools prefixed with `mcp__cortex-vault__`), prefer these tools over manual file operations:
+
+| Instead of... | Use MCP tool |
+|---|---|
+| Manually reading and parsing project context hubs to enumerate projects | `mcp__cortex-vault__list_projects` |
+| Walking the directory tree to check dormant feature activation signals | `mcp__cortex-vault__check_dormant_features` |
+| Running resolve-cwd.md to match cwd to a registered repo | `mcp__cortex-vault__find_project_by_cwd` |
+| Reading and parsing a project context hub for status/blockers/open questions | `mcp__cortex-vault__read_hub` |
+
+If the MCP tools are not available (Desktop/Cowork without the server), fall back to the manual approach described in the steps below.
+
 ## Procedure
 
 **Step 1 — Locate the vault.**

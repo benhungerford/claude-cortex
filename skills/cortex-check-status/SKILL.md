@@ -26,6 +26,17 @@ The full playbook lives in `workflows/check-status.md`.
 
 See row 5 in `references/trigger-phrases.md`.
 
+## MCP Tool Preferences
+
+When the `cortex-vault` MCP server is available (tools prefixed with `mcp__cortex-vault__`), prefer these tools over manual file operations:
+
+| Instead of... | Use MCP tool |
+|---|---|
+| Manually reading and parsing a project context hub | `mcp__cortex-vault__read_hub` |
+| Manually enumerating all projects to find the right one | `mcp__cortex-vault__list_projects` |
+
+If the MCP tools are not available (Desktop/Cowork without the server), fall back to the manual approach described in the steps below.
+
 ## Procedure
 
 Run `workflows/check-status.md`. The workflow covers:

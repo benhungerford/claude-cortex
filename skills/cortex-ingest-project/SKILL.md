@@ -31,6 +31,18 @@ See row 10–11 in `references/trigger-phrases.md`.
 - `personality.md` exists at the vault root. If not → hand off to `cortex-onboarding`.
 - The user's target client (or the equivalent of "client" in their vocabulary) either exists in the vault or the user is prepared to create it alongside the project.
 
+## MCP Tool Preferences
+
+When the `cortex-vault` MCP server is available (tools prefixed with `mcp__cortex-vault__`), prefer these tools over manual file operations:
+
+| Instead of... | Use MCP tool |
+|---|---|
+| Manually creating the 6-element project folder structure | `mcp__cortex-vault__scaffold_project` |
+| Manually formatting and appending entries to _changelog.txt | `mcp__cortex-vault__append_changelog` |
+| Manually adding the new project to parent MOC files | `mcp__cortex-vault__update_moc` |
+
+If the MCP tools are not available (Desktop/Cowork without the server), fall back to the manual approach described in the steps below.
+
 ## Procedure
 
 Run `workflows/ingest-project.md`. The workflow covers:
