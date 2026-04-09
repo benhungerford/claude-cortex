@@ -54,7 +54,7 @@ for CP in "${COWORK_STORES[@]}"; do
 import json, os, shutil, hashlib, datetime, subprocess
 CP = os.environ["CP"]
 SRC = os.environ["PLUGIN_ROOT"]
-MP, PN, VER = "claude-cortex-local", "claude-cortex", "0.1.0"
+MP, PN, VER = "claude-cortex-local", "claude-cortex", "1.0.0"
 PID = f"{PN}@{MP}"
 now = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
@@ -68,7 +68,7 @@ json.dump(km, open(km_path, "w"), indent=2)
 
 dst = f"{CP}/cache/{MP}/{PN}/{VER}"
 if os.path.exists(dst): shutil.rmtree(dst)
-shutil.copytree(SRC, dst, ignore=lambda d, names: [n for n in names if n == ".git"])
+shutil.copytree(SRC, dst, ignore=lambda d, names: [n for n in names if n in (".git",)])
 
 ip_path = f"{CP}/installed_plugins.json"
 ip = json.load(open(ip_path)) if os.path.exists(ip_path) else {"version": 2, "plugins": {}}
