@@ -14,8 +14,11 @@ function registerTool(def) {
   tools.push(def);
 }
 
-// Tool imports — each added as implemented
-// registerTool(require('./tools/append-changelog.js'));
+// Tool imports
+registerTool(require('./tools/append-changelog.js'));
+registerTool(require('./tools/update-moc.js'));
+registerTool(require('./tools/read-hub.js'));
+registerTool(require('./tools/find-project-by-cwd.js'));
 
 const server = new Server(
   { name: 'cortex-vault', version: '1.0.0' },
