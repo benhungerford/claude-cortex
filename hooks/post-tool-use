@@ -1,0 +1,182 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# post-tool-use — Auto-log vault file operations to _changelog.txt.
+# Fired by PostToolUse hook via run-hook.cmd.
+# Reads stdin JSON, determines if a vault file was written/edited/moved,
+# and appends a timestamped entry to _changelog.txt.
+
+# ── Resolve paths ────────────────────────────────────────────────────────────
+
+PLUGIN_DATA="${CLAUDE_PLUGIN_DATA:-$HOME/.claude/cortex/plugin-data}"
+CONFIG_FILE="$HOME/.claude/cortex/config.json"
+
+# ── Helpers ──────────────────────────────────────────────────────────────────
+
+escape_for_json() {
+    local s="$1"
+    s="${s//\\/\\\\}"
+    s="${s//\"/\\\"}"
+    s="${s//$'\n'/\\n}"
+    s="${s//$'\r'/\\r}"
+    s="${s//$'\t'/\\t}"
+    printf '%s' "$s"
+}
+
+# ── Step 1: Read stdin JSON ──────────────────────────────────────────────────
+
+INPUT=$(cat)
+
+# ── Step 2: Extract tool_name and file path ──────────────────────────────────
+
+PARSED="$(python3 -c "
+import json, sys
+
+data = json.loads(sys.argv[1])
+tool_name = data.get('tool_name', '')
+
+tool_input = data.get('tool_input', {})
+
+# Determine which field holds the file path
+if tool_name in ('Write', 'Edit'):
+    file_path = tool_input.get('file_path', '')
+elif tool_name == 'mcp__obsidian__move_note':
+    file_path = tool_input.get('newPath', '')
+else:
+    file_path = tool_input.get('path', '')
+
+print(tool_name)
+print(file_path)
+" "$INPUT" 2>/dev/null)" || exit 0
+
+TOOL_NAME="$(echo "$PARSED" | sed -n '1p')"
+FILE_PATH="$(echo "$PARSED" | sed -n '2p')"
+
+if [[ -z "$TOOL_NAME" || -z "$FILE_PATH" ]]; then
+    exit 0
+fi
+
+# ── Step 3: Resolve vault path ───────────────────────────────────────────────
+
+CACHE_FILE="$PLUGIN_DATA/session-cache/vault-path.txt"
+VAULT_PATH=""
+
+if [[ -f "$CACHE_FILE" ]]; then
+    VAULT_PATH="$(cat "$CACHE_FILE")"
+fi
+
+if [[ -z "$VAULT_PATH" && -f "$CONFIG_FILE" ]]; then
+    VAULT_PATH="$(python3 -c "
+import json
+try:
+    with open('$CONFIG_FILE') as f:
+        print(json.load(f).get('vault_path', ''))
+except Exception:
+    pass
+" 2>/dev/null)" || true
+fi
+
+if [[ -z "$VAULT_PATH" || ! -d "$VAULT_PATH" ]]; then
+    exit 0
+fi
+
+# ── Step 4: Determine absolute path and check if inside vault ────────────────
+
+ABS_PATH=""
+
+case "$TOOL_NAME" in
+    Write|Edit)
+        # Write/Edit use absolute paths — compare directly
+        ABS_PATH="$FILE_PATH"
+        ;;
+    mcp__obsidian__*)
+        # Obsidian MCP tools use paths relative to vault root
+        ABS_PATH="$VAULT_PATH/$FILE_PATH"
+        ;;
+    *)
+        exit 0
+        ;;
+esac
+
+# Check if inside vault (ABS_PATH must start with VAULT_PATH)
+case "$ABS_PATH" in
+    "$VAULT_PATH"/*)
+        ;; # good — inside vault
+    *)
+        exit 0
+        ;;
+esac
+
+# ── Step 5: Skip operational files ───────────────────────────────────────────
+
+FILENAME="$(basename "$ABS_PATH")"
+
+case "$FILENAME" in
+    _changelog.txt|_pipeline_state.json|_session_manifest.md)
+        exit 0
+        ;;
+esac
+
+# ── Step 6: Infer action type ───────────────────────────────────────────────
+
+ACTION=""
+case "$TOOL_NAME" in
+    Write|mcp__obsidian__write_note)
+        ACTION="CREATED"
+        ;;
+    Edit|mcp__obsidian__patch_note|mcp__obsidian__update_frontmatter)
+        ACTION="UPDATED"
+        ;;
+    mcp__obsidian__move_note)
+        ACTION="MOVED"
+        ;;
+    mcp__obsidian__manage_tags)
+        ACTION="TAGGED"
+        ;;
+    *)
+        exit 0
+        ;;
+esac
+
+# ── Step 7: Compute relative path ───────────────────────────────────────────
+
+# Strip vault prefix + leading slash to get vault-relative path
+REL_PATH="${ABS_PATH#"$VAULT_PATH"/}"
+REL_DIR="$(dirname "$REL_PATH")"
+if [[ "$REL_DIR" == "." ]]; then
+    REL_DIR=""
+else
+    REL_DIR="$REL_DIR/"
+fi
+
+# ── Step 8: Append to _changelog.txt ────────────────────────────────────────
+
+CHANGELOG="$VAULT_PATH/_changelog.txt"
+TIMESTAMP="$(date '+%Y-%m-%d %H:%M')"
+ENTRY="[$TIMESTAMP] $ACTION [auto] | FILE: $FILENAME | DEST: $REL_DIR | NOTE: Auto-logged by hook"
+
+echo "$ENTRY" >> "$CHANGELOG"
+
+# ── Step 9: Build additionalContext hint ────────────────────────────────────
+
+if [[ "$ACTION" == "CREATED" ]]; then
+    HINT="Auto-logged: $ACTION | $FILENAME | $REL_DIR. If this is a new file in a folder, update the folder's _MOC.md."
+else
+    HINT="Auto-logged: $ACTION | $FILENAME | $REL_DIR."
+fi
+
+CONTEXT="<cortex-changelog>$HINT</cortex-changelog>"
+ESCAPED="$(escape_for_json "$CONTEXT")"
+
+# ── Step 10: Output platform-appropriate JSON ───────────────────────────────
+
+if [[ -n "${CURSOR_PLUGIN_ROOT:-}" ]]; then
+    # Cursor
+    printf '{"additional_context":"%s"}\n' "$ESCAPED"
+elif [[ -n "${CLAUDE_PLUGIN_ROOT:-}" && -z "${COPILOT_CLI:-}" ]]; then
+    # Claude Code
+    printf '{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"%s"}}\n' "$ESCAPED"
+else
+    # Copilot CLI / default
+    printf '{"additionalContext":"%s"}\n' "$ESCAPED"
+fi
