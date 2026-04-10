@@ -87,6 +87,52 @@ def extract_buckets(personality_content):
     return ", ".join(f"{name} ({typ})" for name, typ in entries)
 
 
+def read_registry(vault_path):
+    """Read registry.json. Returns dict with 'projects' list."""
+    path = os.path.join(vault_path, ".claude", "cortex", "registry.json")
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {"schema_version": 1, "projects": []}
+
+
+def resolve_cwd(vault_path, cwd, registry):
+    """Resolve cwd to an activation level and optional project entry.
+
+    Returns (level: int, project_entry: dict | None).
+    Level 3 = cwd matches a registered repo.
+    Level 2 = cwd is inside the vault.
+    Level 1 = neither.
+    """
+    cwd_real = os.path.realpath(cwd)
+    vault_real = os.path.realpath(vault_path)
+    is_inside_vault = (
+        cwd_real == vault_real or cwd_real.startswith(vault_real + os.sep)
+    )
+
+    # Walk up from cwd, check each candidate against registry repo_paths
+    home = os.path.expanduser("~")
+    candidate = cwd_real
+    projects = registry.get("projects", [])
+
+    while candidate and candidate != os.path.dirname(candidate):
+        for project in projects:
+            for repo_path in project.get("repo_paths", []):
+                if os.path.realpath(repo_path) == candidate:
+                    return 3, project
+        parent = os.path.dirname(candidate)
+        # Stop at home directory or root
+        if candidate == home or parent == candidate:
+            break
+        candidate = parent
+
+    if is_inside_vault:
+        return 2, None
+
+    return 1, None
+
+
 def main():
     parser = argparse.ArgumentParser(description="Cortex boot context loader")
     parser.add_argument("--config", default=os.path.expanduser("~/.claude/cortex/config.json"))
@@ -109,9 +155,21 @@ def main():
     recent_activity, changelog_total = read_changelog(vault_path)
     inbox_count = count_inbox(vault_path)
 
-    # Placeholder for cwd resolution (Task 2)
-    activation_level = 1
+    # Resolve cwd to activation level
+    registry = read_registry(vault_path)
+    activation_level, project_entry = resolve_cwd(vault_path, args.cwd, registry)
+
+    # Placeholder for hub parsing (Task 3) — just pass the ID through for now
     project = None
+    if activation_level == 3 and project_entry:
+        project = {
+            "id": project_entry["id"],
+            "vault_path": project_entry["vault_path"],
+            "stage": None,
+            "blockers": [],
+            "open_questions": [],
+            "recent_decisions": [],
+        }
 
     # Placeholder for dormant features (Task 3)
     feature_suggestion = None

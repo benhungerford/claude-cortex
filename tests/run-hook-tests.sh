@@ -188,6 +188,72 @@ TEST_CONFIG="/tmp/cortex-nonexistent-config-$$.json"
 run_boot_test "no config — non-zero exit" "" "EXIT_NONZERO"
 TEST_CONFIG="$SAVED_CONFIG"
 
+# Test 3: L2 — cwd inside vault
+run_boot_test "L2 — cwd inside vault" "--cwd $TEST_VAULT" \
+    "data['activation_level'] == 2 and data['project'] is None"
+
+# Test 2: L3 — cwd matches registered repo (needs registry + repo dir)
+TEST_REPO="/tmp/cortex-test-repo-$$"
+mkdir -p "$TEST_REPO"
+mkdir -p "$TEST_VAULT/.claude/cortex"
+mkdir -p "$TEST_VAULT/Work/TestClient/Test Project"
+
+# Create a minimal project hub
+cat > "$TEST_VAULT/Work/TestClient/Test Project/Test Project — Project Context.md" << 'HUBEOF'
+---
+type: project-context
+project: "Test Project"
+client: "TestClient"
+status: "In Progress"
+health: "on-track"
+---
+
+# Test Project — Project Context
+
+## Stage Tracker
+| Stage | Status | Notes |
+|-------|--------|-------|
+| Discovery & Brief | Complete | Done |
+| Design / Wireframes | Complete | Done |
+| Core Build | In Progress | Active |
+| QA & Testing | Not Started | |
+
+## Open Questions & Blockers
+| # | Question / Blocker | Type | Owner | Status |
+|---|-------------------|------|-------|--------|
+| 1 | Waiting on API keys | Dependency | Client | Open |
+| 2 | Color palette finalized? | Question | Design | Open |
+| 3 | Old hosting resolved | Internal | Dev | Resolved |
+HUBEOF
+
+# Create project Changelog.md
+cat > "$TEST_VAULT/Work/TestClient/Test Project/Changelog.md" << 'CEOF'
+[2026-04-01] Decided to use Next.js for frontend
+[2026-04-03] Switched from REST to GraphQL
+[2026-04-05] Approved mobile-first approach
+[2026-04-07] Deferred dark mode to v2
+[2026-04-09] Locked header layout
+[2026-04-10] Added search component
+CEOF
+
+# Create registry pointing test repo at this project
+cat > "$TEST_VAULT/.claude/cortex/registry.json" << REOF
+{
+  "schema_version": 1,
+  "projects": [
+    {
+      "id": "test-project",
+      "vault_path": "Work/TestClient/Test Project",
+      "context_file": "Test Project — Project Context.md",
+      "repo_paths": ["$TEST_REPO"]
+    }
+  ]
+}
+REOF
+
+run_boot_test "L3 — cwd matches registered repo" "--cwd $TEST_REPO" \
+    "data['activation_level'] == 3 and data['project'] is not None and data['project']['id'] == 'test-project'"
+
 echo
 echo "=== Results: $PASS passed, $FAIL failed ==="
 
@@ -195,5 +261,6 @@ echo "=== Results: $PASS passed, $FAIL failed ==="
 rm -rf "$CLAUDE_PLUGIN_DATA"
 rm -rf "$TEST_VAULT"
 rm -f "$TEST_CONFIG"
+rm -rf "$TEST_REPO"
 
 [ "$FAIL" -eq 0 ] && exit 0 || exit 1
