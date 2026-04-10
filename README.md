@@ -11,7 +11,7 @@ Claude Cortex is a Claude Code / Claude Desktop plugin that turns Claude into a 
 ## What's in the box
 
 ```
-claude-cortex-plugin/
+claude-cortex/
 ├── .claude-plugin/
 │   ├── plugin.json          # plugin manifest (v1.0.0)
 │   └── marketplace.json     # local marketplace
@@ -51,7 +51,7 @@ claude-cortex-plugin/
 1. Open **Customize** (left sidebar)
 2. Click **+** next to "Personal plugins"
 3. Select **Add marketplace**
-4. Enter `benhungerford/claude-cortex-plugin`
+4. Enter `benhungerford/claude-cortex`
 5. Click **Claude Cortex** to install it
 
 Works for both Cowork and the Code sidebar. Updates are available in the Customize pane when new versions are pushed to GitHub.
@@ -61,8 +61,8 @@ Works for both Cowork and the Code sidebar. Updates are available in the Customi
 From any Claude Code session (terminal, VS Code, JetBrains):
 
 ```text
-/plugin marketplace add benhungerford/claude-cortex-plugin
-/plugin install claude-cortex@benhungerford-claude-cortex-plugin
+/plugin marketplace add benhungerford/claude-cortex
+/plugin install claude-cortex@benhungerford-claude-cortex
 ```
 
 Restart your session. Cortex will load on every new conversation.
@@ -73,8 +73,8 @@ Restart your session. Cortex will load on every new conversation.
 
 **Claude Code:**
 ```text
-/plugin uninstall claude-cortex@benhungerford-claude-cortex-plugin
-/plugin marketplace remove benhungerford-claude-cortex-plugin
+/plugin uninstall claude-cortex@benhungerford-claude-cortex
+/plugin marketplace remove benhungerford-claude-cortex
 ```
 
 ---
@@ -96,8 +96,8 @@ Custom skills get full access to Cortex's 10 MCP tools, vault conventions, and a
 Clone the repo and load it directly without installing:
 
 ```bash
-git clone https://github.com/benhungerford/claude-cortex-plugin
-claude --plugin-dir /path/to/claude-cortex-plugin
+git clone https://github.com/benhungerford/claude-cortex
+claude --plugin-dir /path/to/claude-cortex
 ```
 
 For Claude Desktop, use `scripts/install-desktop.sh` to mirror the plugin into the Cowork plugin store. Re-run after every change (it copies, not symlinks).
