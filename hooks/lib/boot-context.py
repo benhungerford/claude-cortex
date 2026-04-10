@@ -29,14 +29,6 @@ def read_config(config_path):
     return vault_path
 
 
-def read_file_or_default(path, default=""):
-    """Read a file, returning default if missing."""
-    try:
-        with open(path) as f:
-            return f.read()
-    except FileNotFoundError:
-        return default
-
 
 def read_personality(vault_path):
     """Read personality.md. Returns content string or None if missing."""
