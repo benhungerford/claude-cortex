@@ -11,8 +11,19 @@ export CLAUDE_PLUGIN_ROOT="$REPO_ROOT"
 export CLAUDE_PLUGIN_DATA="/tmp/cortex-hook-test-$$"
 mkdir -p "$CLAUDE_PLUGIN_DATA/session-cache"
 
-# Write vault path cache
-echo "/Users/benhungerford/Documents/The Vault" > "$CLAUDE_PLUGIN_DATA/session-cache/vault-path.txt"
+# Create a self-contained temp vault for testing
+TEST_VAULT="/tmp/cortex-test-vault-$$"
+mkdir -p "$TEST_VAULT"
+echo "# Vault Memory" > "$TEST_VAULT/memory.md"
+echo "" > "$TEST_VAULT/_changelog.txt"
+
+# Write vault path cache (points at our temp vault)
+echo "$TEST_VAULT" > "$CLAUDE_PLUGIN_DATA/session-cache/vault-path.txt"
+
+# Patch fixture paths to use the temp vault
+for f in "$FIXTURES"/*.json; do
+    sed "s|/home/testuser/vault|$TEST_VAULT|g" "$f" > "$CLAUDE_PLUGIN_DATA/$(basename "$f")"
+done
 
 # --- Test helpers ---
 
@@ -22,7 +33,7 @@ run_test() {
     local fixture="$3"
     local pattern="$4"
 
-    output=$(cat "$FIXTURES/$fixture" | bash "$REPO_ROOT/hooks/$hook" 2>/dev/null || echo "HOOK_ERROR")
+    output=$(cat "$CLAUDE_PLUGIN_DATA/$fixture" | bash "$REPO_ROOT/hooks/$hook" 2>/dev/null || echo "HOOK_ERROR")
 
     if echo "$output" | grep -q "$pattern"; then
         echo "  PASS: $name"
@@ -40,7 +51,7 @@ run_test_empty() {
     local hook="$2"
     local fixture="$3"
 
-    output=$(cat "$FIXTURES/$fixture" | bash "$REPO_ROOT/hooks/$hook" 2>/dev/null || echo "HOOK_ERROR")
+    output=$(cat "$CLAUDE_PLUGIN_DATA/$fixture" | bash "$REPO_ROOT/hooks/$hook" 2>/dev/null || echo "HOOK_ERROR")
 
     if [ -z "$output" ] || [ "$output" = "{}" ]; then
         echo "  PASS: $name"
@@ -60,6 +71,9 @@ echo
 echo "session-start:"
 run_test "loads vault context" "session-start" "session-start-input.json" "cortex-session"
 
+# Restore test vault path — session-start overwrites the cache with the real vault
+echo "$TEST_VAULT" > "$CLAUDE_PLUGIN_DATA/session-cache/vault-path.txt"
+
 echo
 echo "post-tool-use:"
 run_test "logs vault write" "post-tool-use" "post-tool-use-vault-write.json" "cortex-changelog"
@@ -78,36 +92,13 @@ mkdir -p "$CLAUDE_PLUGIN_DATA/session-cache"
 echo '[{"section": "test", "content": "## Hook Test\\nTest flush."}]' > "$CLAUDE_PLUGIN_DATA/session-cache/pending-memory.json"
 run_test "flushes pending" "stop" "stop-with-pending.json" "cortex-memory"
 
-# Clean up any test data the stop hook appended to the real vault
-VAULT="/Users/benhungerford/Documents/The Vault"
-if [ -f "$VAULT/memory.md" ]; then
-    python3 -c "
-lines = open('$VAULT/memory.md').readlines()
-cleaned = [l for l in lines if 'Hook Test' not in l and 'Test flush' not in l]
-while cleaned and cleaned[-1].strip() == '':
-    cleaned.pop()
-cleaned.append('\n')
-with open('$VAULT/memory.md', 'w') as f:
-    f.writelines(cleaned)
-" 2>/dev/null
-fi
-# Remove test changelog entry
-if [ -f "$VAULT/_changelog.txt" ]; then
-    python3 -c "
-lines = open('$VAULT/_changelog.txt').readlines()
-if lines and 'stop hook' in lines[-1]:
-    lines = lines[:-1]
-with open('$VAULT/_changelog.txt', 'w') as f:
-    f.writelines(lines)
-" 2>/dev/null
-fi
-
 run_test_empty "bails on active" "stop" "stop-empty.json"
 
 echo
 echo "=== Results: $PASS passed, $FAIL failed ==="
 
-# Cleanup
+# Cleanup — only temp directories, never touches a real vault
 rm -rf "$CLAUDE_PLUGIN_DATA"
+rm -rf "$TEST_VAULT"
 
 [ "$FAIL" -eq 0 ] && exit 0 || exit 1

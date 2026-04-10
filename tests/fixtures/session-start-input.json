@@ -2,5 +2,5 @@
   "session_id": "test-session-001",
   "hook_event_name": "SessionStart",
   "source": "startup",
-  "cwd": "/Users/benhungerford/Documents/The Vault"
+  "cwd": "/home/testuser/vault"
 }

@@ -3,8 +3,8 @@
   "hook_event_name": "PostToolUse",
   "tool_name": "Write",
   "tool_input": {
-    "file_path": "/Users/benhungerford/Documents/some-code-repo/src/index.js",
+    "file_path": "/home/testuser/projects/some-code-repo/src/index.js",
     "content": "console.log('hello')"
   },
-  "cwd": "/Users/benhungerford/Documents/some-code-repo"
+  "cwd": "/home/testuser/projects/some-code-repo"
 }

@@ -3,8 +3,8 @@
   "hook_event_name": "PostToolUse",
   "tool_name": "Write",
   "tool_input": {
-    "file_path": "/Users/benhungerford/Documents/The Vault/Work/TBL/Frankl & Thomas/Shopify Website Build/Notes/2026-04-09 Test Note.md",
+    "file_path": "/home/testuser/vault/Work/TBL/Frankl & Thomas/Shopify Website Build/Notes/2026-04-09 Test Note.md",
     "content": "# Test Note\nSome content."
   },
-  "cwd": "/Users/benhungerford/Documents/The Vault"
+  "cwd": "/home/testuser/vault"
 }

@@ -25,7 +25,7 @@ A scenario passes only if all verifications pass. A scenario that produces the r
 
 Unless a scenario explicitly says otherwise, assume:
 
-- `~/.claude/cortex/config.json` exists with `vault_path` pointing at Ben's real vault at `/Users/benhungerford/Documents/The Vault`.
+- `~/.claude/cortex/config.json` exists with `vault_path` pointing at the user's vault (e.g. `~/Documents/The Vault`).
 - `<vault>/personality.md` exists and is valid.
 - `<vault>/memory.md` exists.
 - `<vault>/_changelog.txt` exists and is writable.
@@ -103,10 +103,10 @@ Scenarios that need a non-baseline state will call it out in **Pre-conditions**.
 
 **Pre-conditions:**
 - Baseline vault state.
-- `<vault>/.claude/cortex/registry.json` contains an entry for FKT with `repo_paths` including `/Users/benhungerford/Documents/Freelance Projects/fkt-checkout`.
+- `<vault>/.claude/cortex/registry.json` contains an entry for FKT with `repo_paths` including `~/projects/fkt-checkout`.
 - That directory exists on disk and contains a valid Cortex stub `CLAUDE.md`.
 - The FKT hub (`Work/TBL/Frankl & Thomas/Shopify Website Build/Shopify Website Build — Project Context.md`) has at least 2 open blockers in the Open Questions table (e.g., "Stripe sandbox credentials" and "Sage integration").
-- cwd for the Claude Code session is `/Users/benhungerford/Documents/Freelance Projects/fkt-checkout`.
+- cwd for the Claude Code session is `~/projects/fkt-checkout`.
 
 **User input:** `morning, let's pick up where we left off`
 
