@@ -1,6 +1,6 @@
 # Cortex-managed repo
 
-On session start, invoke the Cortex skill. Cortex will identify this repo against its registry in the Obsidian vault and load the relevant project context.
+This repo is registered with the Claude Cortex plugin. On session start, Cortex identifies this repo against its registry in the Obsidian vault and loads the relevant project context automatically.
 
 ## Why this file is so short
 
