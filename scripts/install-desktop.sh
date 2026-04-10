@@ -105,5 +105,5 @@ echo "  4. Verify 'claude-cortex:cortex-boot' appears in the loaded skills"
 echo
 echo "NOTE: If Cowork creates a new workspace later, re-run this script to"
 echo "mirror the install into it. Remote Cowork (Anthropic-hosted) requires"
-echo "a published marketplace — tracked as Stage 4."
+echo "a published marketplace (not yet available)."
 echo
