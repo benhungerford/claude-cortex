@@ -79,6 +79,47 @@ Restart your session. Cortex will load on every new conversation.
 
 ---
 
+## Getting Started
+
+### Prerequisites
+
+- **[Obsidian](https://obsidian.md)** — free, local-first note app. Cortex uses an Obsidian vault as its knowledge base. If you don't have it yet, the setup will walk you through installing it.
+- **Claude Code or Claude Desktop** — with the Cortex plugin installed (see Install above).
+- **MCP connectors** *(optional)* — Cortex can pull live data from Gmail, Google Calendar, Monday.com, Figma, Slack, and Google Drive if you connect them during setup.
+
+### First run
+
+When you start your first session with Cortex installed, it detects that no vault exists and walks you through setup automatically. No slash command needed — just start a conversation.
+
+The setup takes about 15 minutes and covers:
+
+1. **Obsidian setup** — pick or create a vault location
+2. **5 discovery questions** — your role, how your work is organized, your weekly rhythm, what tools you use, and what falls through the cracks
+3. **Tool connections** — optionally authenticate MCP connectors for tools you mentioned
+4. **The build** — Cortex scaffolds your vault with a personalized folder structure, a `personality.md` that captures your answers, and a changelog that tracks everything going forward
+5. **Developer setup** *(if applicable)* — register code repos so Cortex can detect which project you're working on by directory
+
+By the end, you have a working vault and Cortex is aware of your world.
+
+### How Cortex adapts
+
+Cortex runs at three activation levels depending on context — you don't configure these, they happen automatically:
+
+| Level | When it activates | What Cortex does |
+| --- | --- | --- |
+| **L1 — Passive** | You're outside the vault and no project is mentioned | Loads your context silently. Watches for decisions and blockers to capture. Stays out of the way. |
+| **L2 — Vault-Aware** | You mention a project name or you're working inside the vault | Reads project status on demand. Surfaces blockers if something looks stale. |
+| **L3 — Full Project** | Your working directory is a registered code repo | Opens with the project name, current stage, and open blockers. Full project awareness every turn. |
+
+### What to do next
+
+- **Ask about your work** — "what's the status of \<project\>?" or "what's blocking \<project\>?" to see vault awareness in action
+- **Drop a meeting note** — paste a transcript or say "process this meeting" and Cortex will thread it into the right project folder
+- **Capture a decision** — say "we decided to use Stripe for payments" mid-conversation and Cortex logs it to the project hub automatically
+- **Register a code repo** — open Claude in a project directory and say "register this repo" to link it to a vault project for L3 sessions
+
+---
+
 ## Extending Cortex
 
 Cortex is designed to be extended. To add custom skills — like a sprint planner, a standup generator, or a Slack integration — just describe what you want:
