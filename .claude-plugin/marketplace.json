@@ -5,14 +5,14 @@
   },
   "metadata": {
     "description": "Plugin marketplace for Claude Cortex — always-on vault intelligence for an Obsidian-based second brain.",
-    "version": "1.0.0"
+    "version": "1.1.0"
   },
   "plugins": [
     {
       "name": "claude-cortex",
       "source": "./",
       "description": "Always-on vault intelligence for an Obsidian-based second brain.",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "category": "productivity",
       "tags": ["obsidian", "vault", "knowledge-management"]
     }

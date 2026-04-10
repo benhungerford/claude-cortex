@@ -4,7 +4,7 @@
 
 Claude Cortex is a Claude Code / Claude Desktop plugin that turns Claude into a vault-aware agent. It reads its own memory, understands your projects, and actively maintains a structured Obsidian knowledge base as conversations happen — capturing decisions, blockers, meeting outcomes, and reusable patterns without being asked.
 
-**Status:** v1.0.0 — All 4 stages complete. 9 skills, 7 slash commands, 4 hooks, and a 10-tool MCP server.
+**Status:** v1.1.0 — All 4 stages complete. 9 skills, 7 slash commands, 4 hooks, and a 10-tool MCP server.
 
 ---
 
@@ -13,7 +13,7 @@ Claude Cortex is a Claude Code / Claude Desktop plugin that turns Claude into a 
 ```
 claude-cortex/
 ├── .claude-plugin/
-│   ├── plugin.json          # plugin manifest (v1.0.0)
+│   ├── plugin.json          # plugin manifest (v1.1.0)
 │   └── marketplace.json     # local marketplace
 ├── .mcp.json                # cortex-vault MCP server registration
 ├── skills/                  # 9 focused skills
@@ -150,7 +150,8 @@ For Claude Desktop, use `scripts/install-desktop.sh` to mirror the plugin into t
 - **v0.1.0** — Plugin scaffolding, existing skill migrated, dual-runtime install
 - **v0.2.0** — A+ skill rewrite, monolith split into 8 focused skills, 7 slash commands, test scenarios
 - **v0.3.0** — Hooks (PostToolUse changelog, SessionStart cache, UserPromptSubmit router, Stop flush)
-- **v1.0.0** *(current)* — `cortex-vault` MCP server with 10 tools enforcing vault conventions
+- **v1.0.0** — `cortex-vault` MCP server with 10 tools enforcing vault conventions
+- **v1.1.0** *(current)* — Boot pipeline rewrite, zero-read cortex-boot, no-permission L1, cortex-extend skill
 
 ---
 

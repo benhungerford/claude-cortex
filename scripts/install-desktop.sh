@@ -54,7 +54,7 @@ for CP in "${COWORK_STORES[@]}"; do
 import json, os, shutil, hashlib, datetime, subprocess
 CP = os.environ["CP"]
 SRC = os.environ["PLUGIN_ROOT"]
-MP, PN, VER = "claude-cortex-local", "claude-cortex", "1.0.0"
+MP, PN, VER = "claude-cortex-local", "claude-cortex", "1.1.0"
 PID = f"{PN}@{MP}"
 now = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")
 

@@ -1,5 +1,18 @@
 # Claude Cortex Plugin — Changelog
 
+## v1.1.0 — 2026-04-10
+
+**Boot pipeline rewrite + no-permission boot.**
+
+- `cortex-boot` rewritten as zero-read interpreter — reads nothing itself, operates entirely on pre-loaded `<cortex-session>` block from the session hook
+- `session-start` hook rewritten to use `boot-context.py` module for vault reading
+- `boot-context.py` with core vault reading, hub parsing, CWD resolution via registry lookup, and dormant feature detection
+- L1/L2/L3 test suites for boot-context pipeline
+- `cortex-extend` skill for creating custom companion plugins
+- No-permission boot: L1 activation works without any file-read approvals
+- Marketplace naming fix to match GitHub owner-repo convention
+- Documentation: activation levels, getting started guide, repo-claude-stub updates
+
 ## v1.0.0 — 2026-04-09
 
 **Stage 4: cortex-vault MCP server.**
