@@ -38,6 +38,7 @@ Update this file first when adding a new skill or changing a trigger. Changes he
 | 18 | Literal: "scan for repos", "backfill repos", "find my project folders", "register all my repos" | `cortex-register-repo` | Backfill operation. |
 | 19 | Structural: cwd outside vault, no registry match, `CLAUDE.md` with Cortex stub found walking up | `cortex-register-repo` | Orphaned stub — prompts "is this <closest-match>?" |
 | 20 | Literal: "what project am I in", "what repo is this", "which project is this cwd" | `cortex-register-repo` | Read-only lookup. |
+| 21 | Literal: "I want Cortex to...", "add a skill that...", "extend Cortex to...", "make Cortex do...", "create a custom skill", "build me a skill", "can Cortex learn to..." | `cortex-extend` | Hands off to skill-creation flow with Cortex compatibility rules. |
 
 ---
 
