@@ -254,6 +254,34 @@ REOF
 run_boot_test "L3 — cwd matches registered repo" "--cwd $TEST_REPO" \
     "data['activation_level'] == 3 and data['project'] is not None and data['project']['id'] == 'test-project'"
 
+# Test 2b: L3 — verify hub data is populated
+run_boot_test "L3 — hub data populated" "--cwd $TEST_REPO" \
+    "data['project']['stage'] == 'Core Build' and len(data['project']['blockers']) == 1 and 'API keys' in data['project']['blockers'][0] and len(data['project']['open_questions']) == 1 and len(data['project']['recent_decisions']) == 5"
+
+# Test 4: Memory cap
+python3 -c "
+for i in range(200):
+    print(f'Line {i+1}: memory entry')
+" > "$TEST_VAULT/memory.md"
+
+run_boot_test "memory cap at 100" "--memory-cap 100" \
+    "'Line 101' in data['memory'] and 'Line 1:' not in data['memory'] and 'Line 200' in data['memory']"
+
+# Restore normal memory
+echo "# Vault Memory" > "$TEST_VAULT/memory.md"
+
+# Test 7: Dormant feature detection
+python3 -c "
+for i in range(120):
+    print(f'[2026-04-{(i%28)+1:02d}] Entry {i+1}')
+" > "$TEST_VAULT/_changelog.txt"
+
+run_boot_test "dormant feature detection" "" \
+    "data['feature_suggestion'] is not None and 'weekly_review' in data['feature_suggestion']"
+
+# Restore normal changelog
+echo "" > "$TEST_VAULT/_changelog.txt"
+
 echo
 echo "=== Results: $PASS passed, $FAIL failed ==="
 
