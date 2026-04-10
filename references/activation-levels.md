@@ -75,12 +75,14 @@ Levels escalate automatically. A session can start at L1 and end at L3. They als
 
 ---
 
-## Runtime detection (Stage 3 hook)
+## Runtime detection
 
-The Stage 3 `SessionStart` hook will set these environment variables on session boot:
+The `session-start` hook computes the activation level at boot and includes it in the `<cortex-session>` block as the `Level:` line:
 
-- `CORTEX_RUNTIME` = `cli` | `desktop-code` | `cowork` | `desktop-chat`
-- `CORTEX_INITIAL_LEVEL` = `1` | `2` | `3`
-- `CORTEX_PROJECT_ID` (only if `CORTEX_INITIAL_LEVEL` is 3)
+- `Level: L1 — Passive`
+- `Level: L2 — Vault-Aware`
+- `Level: L3 — Full Project`
 
-Until the hook exists, `cortex-boot` performs the level detection manually on every first message.
+For L3 sessions, the hook also includes the matched project name, current stage, open blockers, open questions, and recent decisions.
+
+The Python module `hooks/lib/boot-context.py` performs the actual resolution: reading `registry.json`, walking up from cwd, and matching against registered `repo_paths`. `cortex-boot` reads the pre-computed level from the session block — it never computes the level itself.
