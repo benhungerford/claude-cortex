@@ -139,7 +139,7 @@ echo "=== Claude Cortex Hook Tests ==="
 echo
 
 echo "session-start:"
-run_test "loads vault context" "session-start" "session-start-input.json" "cortex-session"
+CORTEX_BOOT_CONFIG="$TEST_CONFIG" run_test "loads vault context" "session-start" "session-start-input.json" "cortex-session"
 
 # Restore test vault path — session-start overwrites the cache with the real vault
 echo "$TEST_VAULT" > "$CLAUDE_PLUGIN_DATA/session-cache/vault-path.txt"
@@ -281,6 +281,39 @@ run_boot_test "dormant feature detection" "" \
 
 # Restore normal changelog
 echo "" > "$TEST_VAULT/_changelog.txt"
+
+echo
+echo "session-start (v2 integration):"
+
+# Test 8: Full L3 session block
+# Override HOME to prevent finding real config, use CORTEX_BOOT_CONFIG for test config
+v2_output=$(cd "$TEST_REPO" && HOME="/tmp" \
+    CORTEX_BOOT_CONFIG="$TEST_CONFIG" \
+    bash "$REPO_ROOT/hooks/session-start" 2>/dev/null || echo "HOOK_ERROR")
+
+v2_pass=true
+for pattern in "cortex-session" "Level: L3" "cortex-personality" "cortex-memory" "Test Project"; do
+    if ! echo "$v2_output" | grep -q "$pattern"; then
+        echo "  FAIL: L3 session block — missing '$pattern'"
+        echo "    Got: $(echo "$v2_output" | head -5)"
+        FAIL=$((FAIL + 1))
+        v2_pass=false
+        break
+    fi
+done
+if $v2_pass; then
+    echo "  PASS: L3 session block"
+    PASS=$((PASS + 1))
+fi
+
+# Test 10: Capture-rules cached
+if [[ -f "$CLAUDE_PLUGIN_DATA/session-cache/capture-rules.txt" ]]; then
+    echo "  PASS: capture-rules cached"
+    PASS=$((PASS + 1))
+else
+    echo "  FAIL: capture-rules cached (file missing)"
+    FAIL=$((FAIL + 1))
+fi
 
 echo
 echo "=== Results: $PASS passed, $FAIL failed ==="
