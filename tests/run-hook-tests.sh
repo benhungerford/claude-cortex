@@ -16,6 +16,34 @@ TEST_VAULT="/tmp/cortex-test-vault-$$"
 mkdir -p "$TEST_VAULT"
 echo "# Vault Memory" > "$TEST_VAULT/memory.md"
 echo "" > "$TEST_VAULT/_changelog.txt"
+cat > "$TEST_VAULT/personality.md" << 'PEOF'
+---
+identity:
+  name: "Test User"
+  role: "Developer"
+mental_model:
+  bucket_term: "Projects"
+  buckets:
+    - name: "Alpha"
+      type: "Active Project"
+    - name: "Beta"
+      type: "Ongoing Support"
+progressive_features:
+  active:
+    - core_capture
+  dormant:
+    - name: weekly_review
+      activation_signal: "changelog_lines >= 50"
+---
+
+# Test Personality
+
+This is a test personality file.
+PEOF
+
+# Config pointing at our test vault
+TEST_CONFIG="/tmp/cortex-test-config-$$.json"
+printf '{"vault_path": "%s", "schema_version": 1}' "$TEST_VAULT" > "$TEST_CONFIG"
 
 # Write vault path cache (points at our temp vault)
 echo "$TEST_VAULT" > "$CLAUDE_PLUGIN_DATA/session-cache/vault-path.txt"
@@ -63,6 +91,48 @@ run_test_empty() {
     fi
 }
 
+run_boot_test() {
+    local name="$1"
+    local extra_args="$2"
+    local check_expr="$3"
+
+    local output
+    output=$(python3 "$REPO_ROOT/hooks/lib/boot-context.py" \
+        --config "$TEST_CONFIG" --cwd "/tmp" $extra_args 2>/dev/null) || {
+        if [[ "$check_expr" == "EXIT_NONZERO" ]]; then
+            echo "  PASS: $name"
+            PASS=$((PASS + 1))
+            return
+        fi
+        echo "  FAIL: $name (python exited non-zero)"
+        FAIL=$((FAIL + 1))
+        return
+    }
+
+    if [[ "$check_expr" == "EXIT_NONZERO" ]]; then
+        echo "  FAIL: $name (expected non-zero exit but got 0)"
+        FAIL=$((FAIL + 1))
+        return
+    fi
+
+    local result
+    result=$(python3 -c "
+import json, sys
+data = json.loads(sys.stdin.read())
+print('true' if ($check_expr) else 'false')
+" <<< "$output" 2>/dev/null)
+
+    if [[ "$result" == "true" ]]; then
+        echo "  PASS: $name"
+        PASS=$((PASS + 1))
+    else
+        echo "  FAIL: $name"
+        echo "    Check: $check_expr"
+        echo "    Output keys: $(python3 -c "import json,sys; print(list(json.loads(sys.stdin.read()).keys()))" <<< "$output" 2>/dev/null)"
+        FAIL=$((FAIL + 1))
+    fi
+}
+
 # --- Tests ---
 
 echo "=== Claude Cortex Hook Tests ==="
@@ -95,10 +165,35 @@ run_test "flushes pending" "stop" "stop-with-pending.json" "cortex-memory"
 run_test_empty "bails on active" "stop" "stop-empty.json"
 
 echo
+echo "boot-context.py:"
+
+# Test 1: L1 — no registry match
+run_boot_test "L1 — no registry match" "" \
+    "data['activation_level'] == 1 and data['project'] is None and 'Test User' in data['personality'] and data['memory'] != ''"
+
+# Test 5: Missing files graceful
+SAVED_MEMORY="$(cat "$TEST_VAULT/memory.md")"
+SAVED_CHANGELOG="$(cat "$TEST_VAULT/_changelog.txt")"
+rm -f "$TEST_VAULT/memory.md" "$TEST_VAULT/_changelog.txt"
+
+run_boot_test "missing files graceful" "" \
+    "data['memory'] == '' and data['recent_activity'] == '' and data['personality'] != ''"
+
+echo "$SAVED_MEMORY" > "$TEST_VAULT/memory.md"
+echo "$SAVED_CHANGELOG" > "$TEST_VAULT/_changelog.txt"
+
+# Test 6: No config — non-zero exit
+SAVED_CONFIG="$TEST_CONFIG"
+TEST_CONFIG="/tmp/cortex-nonexistent-config-$$.json"
+run_boot_test "no config — non-zero exit" "" "EXIT_NONZERO"
+TEST_CONFIG="$SAVED_CONFIG"
+
+echo
 echo "=== Results: $PASS passed, $FAIL failed ==="
 
 # Cleanup — only temp directories, never touches a real vault
 rm -rf "$CLAUDE_PLUGIN_DATA"
 rm -rf "$TEST_VAULT"
+rm -f "$TEST_CONFIG"
 
 [ "$FAIL" -eq 0 ] && exit 0 || exit 1
