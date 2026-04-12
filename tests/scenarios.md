@@ -423,3 +423,106 @@ The title hint in the paste is "FKT Standup 2026-04-08" (or derivable from conte
 - **Non-existent target project for a match:** if the user types a project name during confirmation that doesn't exist in the vault, the skill must NOT create the project — it must hand off to `cortex-ingest-project` or surface the missing project.
 
 ---
+
+## Scenario 11 — First-run coaching → `cortex-coach` intake
+
+**Trigger phrase(s) or structural signal:** Literal. "coach me on how to get better". Row 22 of the routing table.
+
+**Pre-conditions:**
+- Baseline vault state.
+- `Knowledge Base/Growth/` folder does **not** exist.
+- `Knowledge Base/Growth/_profile.md` does **not** exist.
+- cwd is `~/Documents` (neutral, L1 session).
+
+**User input:** `coach me on how to get better`
+
+**Expected routing:** `cortex-coach` → detects missing `_profile.md` → runs `workflows/coach-intake.md`.
+
+**Expected behavior:**
+1. Skill scaffolds `Knowledge Base/Growth/` with `_MOC.md`, `_signals.log`.
+2. Asks the user about learning goals. Waits for response.
+3. Writes `_goals.md` with user's stated goals.
+4. Asks the user about learning preferences. Waits for response.
+5. Bootstraps `_profile.md` from vault state (KB articles, changelog, personality.md).
+6. Writes `_profile.md` with preferences, inferred strengths, growth edges.
+7. Delivers first piece of coaching guidance based on the user's #1 goal.
+
+**Expected vault mutations:**
+- Created: `Knowledge Base/Growth/_MOC.md`
+- Created: `Knowledge Base/Growth/_signals.log`
+- Created: `Knowledge Base/Growth/_goals.md`
+- Created: `Knowledge Base/Growth/_profile.md`
+- Updated: `Knowledge Base/_MOC.md` (added Growth link)
+- Appended: `Knowledge Base/Growth/_signals.log` (first coaching signal)
+- Appended: `_changelog.txt` (auto-logged by hook for each created file)
+
+**Expected chat output:** Goals question → preferences question → "Growth tracking set up." → first coaching guidance.
+
+**Failure mode to exercise:** Run the same scenario again after intake completes. The skill should skip intake (profile exists) and go straight to coaching.
+
+---
+
+## Scenario 12 — On-demand coaching with existing profile → `cortex-coach`
+
+**Trigger phrase(s) or structural signal:** Literal. "teach me about Liquid filters". Row 22 of the routing table.
+
+**Pre-conditions:**
+- Baseline vault state.
+- `Knowledge Base/Growth/_profile.md` exists with learning preferences set to "walkthroughs".
+- `Knowledge Base/Growth/_goals.md` exists with "Liquid templating" as an active goal.
+- `Knowledge Base/Growth/_signals.log` has 2 prior TEACHING entries for domain:liquid.
+- cwd is inside a Shopify project repo (L3 session).
+
+**User input:** `teach me about Liquid filters`
+
+**Expected routing:** `cortex-coach` → profile exists → runs `workflows/coach.md`.
+
+**Expected behavior:**
+1. Reads `_profile.md`, `_goals.md`, `_signals.log`.
+2. Identifies Liquid as a known growth edge and active goal.
+3. Identifies this as a skill gap (prior signals exist, user is still asking).
+4. Delivers walkthrough-style guidance (matching learning preference) using the user's current Shopify project as the example.
+5. Silently appends a TEACHING signal to `_signals.log`.
+6. Applies reusability test to any knowledge produced.
+
+**Expected vault mutations:**
+- Appended: `Knowledge Base/Growth/_signals.log` (new TEACHING entry with mode:on-demand)
+- Possibly created: a new Knowledge Base article (if guidance was reusable)
+
+**Expected chat output:** Walkthrough of Liquid filters with concrete examples from the user's project. No mention of signal logging.
+
+**Failure mode to exercise:** Delete `_goals.md` before running. The skill should create a minimal `_goals.md` and ask the user if they want to set goals.
+
+---
+
+## Scenario 13 — Scheduled growth report → `cortex-coach` report mode
+
+**Trigger phrase(s) or structural signal:** Explicit invocation via `/cortex-coach report` or scheduled task.
+
+**Pre-conditions:**
+- Baseline vault state.
+- `Knowledge Base/Growth/` fully set up (profile, goals, signals).
+- `Knowledge Base/Growth/_signals.log` has 10+ entries spanning the last 7 days across 3 domains.
+- `Knowledge Base/Growth/Reports/` exists but is empty (first report).
+
+**User input:** `/cortex-coach report`
+
+**Expected routing:** `cortex-coach` → `report` argument → runs `workflows/coach-report.md`.
+
+**Expected behavior:**
+1. Determines report period (last 7 days, since no previous report exists).
+2. Aggregates signals by domain, counts frequency, identifies clusters.
+3. Reads changelog, KB articles, goals, profile for context.
+4. Writes a dated growth report to `Knowledge Base/Growth/Reports/`.
+5. Updates `_profile.md` with any new observations.
+6. Updates `Knowledge Base/Growth/_MOC.md` with the new report link.
+
+**Expected vault mutations:**
+- Created: `Knowledge Base/Growth/Reports/2026-04-11 Growth Report.md`
+- Updated: `Knowledge Base/Growth/_profile.md` (profile updates section applied)
+- Updated: `Knowledge Base/Growth/_MOC.md` (new report link)
+- Appended: `_changelog.txt` (auto-logged)
+
+**Expected chat output:** "Growth report written for 2026-04-04 to 2026-04-11. Key finding: {{one-line summary}}."
+
+**Failure mode to exercise:** Empty `_signals.log` before running. The skill should write a short report noting the quiet period without fabricating patterns.
