@@ -86,6 +86,13 @@ lines.append('<cortex-memory>')
 lines.append(data.get('memory', '').rstrip())
 lines.append('</cortex-memory>')
 
+lp = data.get('learner_profile', '')
+if lp.strip():
+    lines.append('')
+    lines.append('<cortex-learner-profile>')
+    lines.append(lp.rstrip())
+    lines.append('</cortex-learner-profile>')
+
 if data.get('recent_activity'):
     lines.append('')
     lines.append('Recent activity:')
