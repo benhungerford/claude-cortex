@@ -149,11 +149,26 @@ else
     REL_DIR="$REL_DIR/"
 fi
 
+# ── Step 6b: Detect Knowledge Base writes for learning intake tagging ────────
+
+KB_SOURCE=""
+case "$REL_PATH" in
+    "Knowledge Base/"*)
+        # Check if this write was initiated by cortex-coach
+        COACH_FLAG="$PLUGIN_DATA/session-cache/coach-active.flag"
+        if [[ -f "$COACH_FLAG" ]]; then
+            KB_SOURCE=" [source:coaching]"
+        else
+            KB_SOURCE=" [source:capture]"
+        fi
+        ;;
+esac
+
 # ── Step 8: Append to _changelog.txt ────────────────────────────────────────
 
 CHANGELOG="$VAULT_PATH/_changelog.txt"
 TIMESTAMP="$(date '+%Y-%m-%d %H:%M')"
-ENTRY="[$TIMESTAMP] $ACTION [auto] | FILE: $FILENAME | DEST: $REL_DIR | NOTE: Auto-logged by hook"
+ENTRY="[$TIMESTAMP] $ACTION [auto] | FILE: $FILENAME | DEST: $REL_DIR | NOTE: Auto-logged by hook${KB_SOURCE}"
 
 echo "$ENTRY" >> "$CHANGELOG"
 
