@@ -51,6 +51,15 @@ def read_memory(vault_path, cap=100):
     return "".join(lines)
 
 
+def read_learner_profile(vault_path):
+    """Read Knowledge Base/Growth/_profile.md. Returns content string or empty."""
+    path = os.path.join(vault_path, "Knowledge Base", "Growth", "_profile.md")
+    if not os.path.isfile(path):
+        return ""
+    with open(path) as f:
+        return f.read()
+
+
 def read_changelog(vault_path, tail=15):
     """Read last N lines of _changelog.txt. Returns (content, total_lines)."""
     path = os.path.join(vault_path, "_changelog.txt")
@@ -255,6 +264,7 @@ def main():
 
     # Read optional files
     memory = read_memory(vault_path, args.memory_cap)
+    learner_profile = read_learner_profile(vault_path)
     recent_activity, changelog_total = read_changelog(vault_path)
     inbox_count = count_inbox(vault_path)
 
@@ -284,6 +294,7 @@ def main():
         "activation_level": activation_level,
         "personality": personality,
         "memory": memory,
+        "learner_profile": learner_profile,
         "recent_activity": recent_activity,
         "inbox_count": inbox_count,
         "active_projects": active_projects,

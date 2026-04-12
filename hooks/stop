@@ -36,6 +36,58 @@ if [[ "$STOP_ACTIVE" == "True" ]]; then
     exit 0
 fi
 
+# ── Step 1b: Log learning signals to _signals.log ───────────────────────────
+# Check for teaching-moment signals accumulated during the session.
+# The cortex-coach skill and hooks write pending signals to a JSON file.
+
+SIGNALS_PENDING="$PLUGIN_DATA/session-cache/pending-signals.json"
+
+if [[ -f "$SIGNALS_PENDING" && -s "$SIGNALS_PENDING" ]]; then
+    # Resolve vault path
+    SIGNAL_CACHE_FILE="$PLUGIN_DATA/session-cache/vault-path.txt"
+    SIGNAL_VAULT_PATH=""
+
+    if [[ -f "$SIGNAL_CACHE_FILE" ]]; then
+        SIGNAL_VAULT_PATH="$(cat "$SIGNAL_CACHE_FILE")"
+    fi
+
+    if [[ -n "$SIGNAL_VAULT_PATH" && -d "$SIGNAL_VAULT_PATH" ]]; then
+        SIGNALS_LOG="$SIGNAL_VAULT_PATH/Knowledge Base/Growth/_signals.log"
+
+        # Only write if the Growth folder exists (coach has been initialized)
+        if [[ -d "$SIGNAL_VAULT_PATH/Knowledge Base/Growth" ]]; then
+            python3 -c "
+import json, sys, os
+from datetime import datetime
+
+pending_file = sys.argv[1]
+signals_log = sys.argv[2]
+
+try:
+    with open(pending_file) as f:
+        signals = json.load(f)
+except Exception:
+    sys.exit()
+
+if not isinstance(signals, list) or len(signals) == 0:
+    sys.exit()
+
+with open(signals_log, 'a') as f:
+    for sig in signals:
+        ts = sig.get('timestamp', datetime.now().strftime('%Y-%m-%d %H:%M'))
+        sig_type = sig.get('type', 'TEACHING')
+        domain = sig.get('domain', 'unknown')
+        topic = sig.get('topic', 'unknown')
+        depth = sig.get('depth', 'minor')
+        mode = sig.get('mode', 'session')
+        f.write(f'[{ts}] {sig_type} | domain:{domain} | topic:{topic} | depth:{depth} | mode:{mode}\n')
+" "$SIGNALS_PENDING" "$SIGNALS_LOG" 2>/dev/null || true
+        fi
+    fi
+
+    rm -f "$SIGNALS_PENDING"
+fi
+
 # ── Step 2: Check for pending memory updates ────────────────────────────────
 
 PENDING_FILE="$PLUGIN_DATA/session-cache/pending-memory.json"
