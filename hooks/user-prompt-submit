@@ -125,6 +125,17 @@ if [[ -z "$SKILL" ]]; then
     esac
 fi
 
+# ── 3e-coach: Coaching triggers ─────────────────────────────────────────────
+if [[ -z "$SKILL" ]]; then
+    case "$LOWER" in
+        *"teach me"*|*"coach me"*|*"what should i be learning"*|*"where can i improve"*|*"how could i do this better"*|*"what am i missing"*|*"review my approach"*|*"skill check"*|*"growth check"*)
+            SKILL="cortex-coach"
+            CONFIDENCE="high"
+            TRIGGER_DESC="coaching trigger"
+            ;;
+    esac
+fi
+
 # ── 3f: Read-side triggers (lowest priority) ───────────────────────────────
 if [[ -z "$SKILL" ]]; then
     case "$LOWER" in
@@ -147,14 +158,35 @@ if [[ -z "$SKILL" ]]; then
     esac
 fi
 
+# ── Step 3b: Teaching moment detection (for Stop hook signal logging) ───────
+# This does NOT route to a skill. It tags the exchange so the Stop hook
+# can log learning signals.
+
+TEACHING_HINT=""
+if [[ -z "$SKILL" ]]; then
+    case "$LOWER" in
+        *"explain"*|*"why does"*|*"how does"*|*"walk me through"*|*"help me understand"*|*"what's the difference between"*|*"show me how"*)
+            TEACHING_HINT="<cortex-hint type=\"teaching-moment\">Teaching moment detected — stop hook should log if Claude provides significant instruction.</cortex-hint>"
+            ;;
+    esac
+fi
+
 # ── Step 4: Output ──────────────────────────────────────────────────────────
 
-if [[ -z "$SKILL" ]]; then
+if [[ -z "$SKILL" && -z "$TEACHING_HINT" ]]; then
     printf '{}\n'
     exit 0
 fi
 
-HINT="<cortex-hint>likely-skill: $SKILL | confidence: $CONFIDENCE | trigger: \"$TRIGGER_DESC\"</cortex-hint>"
+HINT=""
+if [[ -n "$SKILL" ]]; then
+    HINT="<cortex-hint>likely-skill: $SKILL | confidence: $CONFIDENCE | trigger: \"$TRIGGER_DESC\"</cortex-hint>"
+fi
+
+if [[ -n "$TEACHING_HINT" ]]; then
+    HINT="${HINT}${TEACHING_HINT}"
+fi
+
 ESCAPED="$(escape_for_json "$HINT")"
 
 # Platform-appropriate JSON output
