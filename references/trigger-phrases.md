@@ -39,6 +39,7 @@ Update this file first when adding a new skill or changing a trigger. Changes he
 | 19 | Structural: cwd outside vault, no registry match, `CLAUDE.md` with Cortex stub found walking up | `cortex-register-repo` | Orphaned stub — prompts "is this <closest-match>?" |
 | 20 | Literal: "what project am I in", "what repo is this", "which project is this cwd" | `cortex-register-repo` | Read-only lookup. |
 | 21 | Literal: "I want Cortex to...", "add a skill that...", "extend Cortex to...", "make Cortex do...", "create a custom skill", "build me a skill", "can Cortex learn to..." | `cortex-extend` | Hands off to skill-creation flow with Cortex compatibility rules. |
+| 22 | Literal: "teach me", "teach me about", "teach me how", "teach me why", "what should I be learning", "where can I improve", "coach me", "how could I do this better", "what am I missing", "review my approach", "skill check", "growth check" | `cortex-coach` | On-demand coaching. Reads vault state + Claude expertise to deliver tailored guidance. |
 
 ---
 
