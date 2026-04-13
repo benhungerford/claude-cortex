@@ -11,10 +11,10 @@ Claude Cortex is a Claude Code / Claude Desktop plugin that turns Claude into a 
 ```
 claude-cortex/
 ├── .claude-plugin/
-│   ├── plugin.json          # plugin manifest (v1.1.0)
+│   ├── plugin.json          # plugin manifest
 │   └── marketplace.json     # local marketplace
 ├── .mcp.json                # cortex-vault MCP server registration
-├── skills/                  # 9 focused skills
+├── skills/                  # 10 focused skills
 │   ├── cortex-boot/         # always-on session bootstrap
 │   ├── cortex-check-status/ # read-only project status
 │   ├── cortex-update-context/ # write decisions, blockers, scope changes
@@ -22,6 +22,7 @@ claude-cortex/
 │   ├── cortex-ingest-project/  # scaffold new projects
 │   ├── cortex-register-repo/   # link code repos to vault projects
 │   ├── cortex-knowledge/       # extract reusable patterns to Knowledge Base
+│   ├── cortex-coach/           # adaptive skill development coaching
 │   ├── cortex-onboarding/      # first-run setup
 │   └── cortex-extend/         # create custom companion skills
 ├── commands/                # 7 slash commands (cortex-capture, cortex-status, etc.)
@@ -64,6 +65,16 @@ From any Claude Code session (terminal, VS Code, JetBrains):
 ```
 
 Restart your session. Cortex will load on every new conversation.
+
+### Update
+
+**Claude Desktop:** Updates appear automatically in the Customize pane when new versions are pushed to GitHub.
+
+**Claude Code:**
+```text
+claude plugin update claude-cortex@benhungerford-claude-cortex
+```
+Restart your session after updating.
 
 ### Uninstall
 
@@ -149,7 +160,8 @@ For Claude Desktop, use `scripts/install-desktop.sh` to mirror the plugin into t
 - **v0.2.0** — A+ skill rewrite, monolith split into 8 focused skills, 7 slash commands, test scenarios
 - **v0.3.0** — Hooks (PostToolUse changelog, SessionStart cache, UserPromptSubmit router, Stop flush)
 - **v1.0.0** — `cortex-vault` MCP server with 10 tools enforcing vault conventions
-- **v1.1.0** *(current)* — Boot pipeline rewrite, zero-read cortex-boot, no-permission L1, cortex-extend skill
+- **v1.1.0** — Boot pipeline rewrite, zero-read cortex-boot, no-permission L1, cortex-extend skill
+- **v1.2.0** — `cortex-coach` adaptive skill development coaching, learner profiles, 3 coaching workflows, auto-update support
 
 ---
 
