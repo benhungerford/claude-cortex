@@ -4,8 +4,6 @@
 
 Claude Cortex is a Claude Code / Claude Desktop plugin that turns Claude into a vault-aware agent. It reads its own memory, understands your projects, and actively maintains a structured Obsidian knowledge base as conversations happen — capturing decisions, blockers, meeting outcomes, and reusable patterns without being asked.
 
-**Status:** v1.1.0 — All 4 stages complete. 9 skills, 7 slash commands, 4 hooks, and a 10-tool MCP server.
-
 ---
 
 ## What's in the box
