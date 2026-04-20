@@ -68,6 +68,25 @@ If the session block contains a `Feature suggestion:` line, queue it for the nex
 
 Do not present a menu. Do not list everything loaded. Do not summarize what you know. Let the user drive the conversation. The personality, memory, and project context are background — use them to inform responses, not to announce them.
 
+**Step 6 — Ambient recall.**
+
+When the user starts a substantive task during the session, silently call the `recall_related` MCP tool from `cortex-vault` to pull notes semantically related to what they are working on. This widens your awareness of prior vault knowledge the user may have forgotten.
+
+| Trigger | What to pass as `context` |
+|---|---|
+| User describes a new task, feature, or build | The user's request verbatim |
+| User mentions a vendor, tool, pattern, or technique by name | That name plus the surrounding sentence |
+| User hits a blocker or describes an unfamiliar problem | The problem statement |
+
+Rules:
+- At most **one** `recall_related` call per user turn. Do not chain calls.
+- Use `limit: 5`.
+- Pass the path of any file currently being edited in `exclude_paths` so you don't recall it.
+- Only surface results that have `score > 0.5`. Everything below that is noise.
+- Surface relevant hits in one short line before answering — e.g. `Worth knowing: you've already documented this pattern in [[_MOC]] and [[ywPortal SSO]].` Never dump the full result set.
+- If no results clear the threshold, say nothing about the recall.
+- Skip this step entirely for trivial turns (pleasantries, yes/no confirmations, quick factual questions).
+
 ## What cortex-boot does NOT do
 
 - **Does not read files.** All context is in `<cortex-session>`.
