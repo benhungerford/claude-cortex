@@ -1,6 +1,6 @@
 {
   "cortex-vault": {
     "command": "node",
-    "args": ["${CLAUDE_PLUGIN_ROOT}/mcp-servers/cortex-vault/server.js"]
+    "args": ["${CLAUDE_PLUGIN_ROOT}/mcp-servers/cortex-vault/bootstrap.js"]
   }
 }

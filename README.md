@@ -184,6 +184,7 @@ For Claude Desktop, use `scripts/install-desktop.sh` to mirror the plugin into t
 - **v1.1.0** — Boot pipeline rewrite, zero-read cortex-boot, no-permission L1, cortex-extend skill
 - **v1.2.0** — `cortex-coach` adaptive skill development coaching, learner profiles, 3 coaching workflows, auto-update support
 - **v1.3.0** — Semantic search + ambient recall: local embeddings, vector index at `{vault}/.cortex/search.db`, `search_vault` / `recall_related` / `reindex_vault` MCP tools, `/cortex-index` slash command, auto re-embed hook
+- **v1.3.1** — Auto-install MCP dependencies on launch: bootstrap wrapper verifies `node_modules` and runs `npm install` if needed, so MCP tools keep working across plugin cache refreshes
 
 ---
 
