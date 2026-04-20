@@ -172,6 +172,24 @@ ENTRY="[$TIMESTAMP] $ACTION [auto] | FILE: $FILENAME | DEST: $REL_DIR | NOTE: Au
 
 echo "$ENTRY" >> "$CHANGELOG"
 
+# ── Step 8b: Re-index .md file into semantic search (background, silent) ─────
+
+if [[ "$FILENAME" == *.md ]]; then
+    SKIP_REINDEX=0
+    case "$REL_PATH" in
+        .cortex/*|_Templates/*|Archives/*|.*)
+            SKIP_REINDEX=1
+            ;;
+    esac
+    if [[ "$SKIP_REINDEX" == "0" ]]; then
+        PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-${CURSOR_PLUGIN_ROOT:-}}"
+        REINDEX_BIN="$PLUGIN_ROOT/mcp-servers/cortex-vault/bin/reindex-one.js"
+        if [[ -n "$PLUGIN_ROOT" && -f "$REINDEX_BIN" ]]; then
+            (node "$REINDEX_BIN" "$VAULT_PATH" "$REL_PATH" >/dev/null 2>&1 &) || true
+        fi
+    fi
+fi
+
 # ── Step 9: Build additionalContext hint ────────────────────────────────────
 
 if [[ "$ACTION" == "CREATED" ]]; then

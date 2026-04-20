@@ -9,3 +9,6 @@ mcp-servers/cortex-vault/node_modules/
 
 # Worktrees
 .worktrees/
+
+# Semantic search index (generated per-vault at runtime)
+.cortex/

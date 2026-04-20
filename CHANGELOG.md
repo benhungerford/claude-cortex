@@ -1,5 +1,17 @@
 # Claude Cortex Plugin — Changelog
 
+## v1.3.0 — 2026-04-19
+
+**Semantic search + ambient recall.**
+
+- `cortex-vault` MCP server gains 3 new tools: `search_vault`, `recall_related`, `reindex_vault` (13 total)
+- Local embeddings via `@huggingface/transformers` running `all-MiniLM-L6-v2` (384-dim, ~22MB, no API key, offline)
+- Vector index stored in SQLite + `sqlite-vec` at `{vault}/.cortex/search.db`
+- New `/cortex-index` slash command to rebuild the index on demand
+- `post-tool-use` hook auto-re-embeds any `.md` file written or edited inside the vault (silent, fire-and-forget)
+- `cortex-boot` skill gains a "Step 6 — Ambient recall" contract: Claude now proactively surfaces semantically related prior vault notes when the user starts a task, names a vendor/tool, or hits a blocker
+- Source inspiration: MemPalace (items #1 semantic search and #4 cross-project discovery)
+
 ## v1.1.0 — 2026-04-10
 
 **Boot pipeline rewrite + no-permission boot.**

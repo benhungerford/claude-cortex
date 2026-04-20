@@ -25,14 +25,14 @@ claude-cortex/
 │   ├── cortex-coach/           # adaptive skill development coaching
 │   ├── cortex-onboarding/      # first-run setup
 │   └── cortex-extend/         # create custom companion skills
-├── commands/                # 7 slash commands (cortex-capture, cortex-status, etc.)
+├── commands/                # 8 slash commands (cortex-capture, cortex-status, cortex-index, etc.)
 ├── hooks/                   # 4 lifecycle hooks
 │   ├── session-start        # vault context + trigger phrase cache
-│   ├── post-tool-use        # auto-log vault writes to _changelog.txt
+│   ├── post-tool-use        # auto-log vault writes + re-embed edited notes
 │   ├── user-prompt-submit   # route trigger phrases to skills
 │   └── stop                 # flush pending memory on session end
 ├── mcp-servers/
-│   └── cortex-vault/        # 10-tool MCP server enforcing vault conventions
+│   └── cortex-vault/        # 13-tool MCP server (conventions + semantic search)
 ├── workflows/               # detailed playbooks for skill internals
 ├── references/              # convention guides, trigger phrases, activation levels
 ├── scripts/
@@ -137,7 +137,28 @@ Cortex is designed to be extended. To add custom skills — like a sprint planne
 
 Cortex will walk you through the details and create a companion plugin that works alongside the core. Your extensions live in their own plugin, so Cortex updates never overwrite your customizations.
 
-Custom skills get full access to Cortex's 10 MCP tools, vault conventions, and activation levels. See `skills/cortex-extend/SKILL.md` for the full extension guide.
+Custom skills get full access to Cortex's 13 MCP tools, vault conventions, and activation levels. See `skills/cortex-extend/SKILL.md` for the full extension guide.
+
+---
+
+## Semantic search
+
+As of v1.3.0, Cortex ships with local semantic search over your vault.
+
+**What it does:** finds notes by meaning, not just keywords. A query for "checkout abandonment" will surface notes talking about "cart drop-off" — even if they share no words.
+
+**How it works:** Cortex embeds each `.md` note into a 384-dimensional vector using the `all-MiniLM-L6-v2` model (runs locally in Node via `@huggingface/transformers`). Vectors live in a SQLite + `sqlite-vec` database at `{your vault}/.cortex/search.db`. No API key, no cloud, no data leaves your machine.
+
+**Two modes:**
+
+| Mode | When it fires | MCP tool |
+|---|---|---|
+| **Explicit search** | You ask: "find everything about X" | `search_vault` |
+| **Ambient recall** | Claude silently recalls related notes when you start a task, name a vendor, or hit a blocker | `recall_related` |
+
+**First-time setup:** run `/cortex-index` once to build the index. Takes ~30–90 seconds depending on vault size. After that, the `post-tool-use` hook re-embeds notes automatically as you edit them.
+
+**To rebuild from scratch:** delete `{vault}/.cortex/search.db` and run `/cortex-index`.
 
 ---
 
@@ -162,6 +183,7 @@ For Claude Desktop, use `scripts/install-desktop.sh` to mirror the plugin into t
 - **v1.0.0** — `cortex-vault` MCP server with 10 tools enforcing vault conventions
 - **v1.1.0** — Boot pipeline rewrite, zero-read cortex-boot, no-permission L1, cortex-extend skill
 - **v1.2.0** — `cortex-coach` adaptive skill development coaching, learner profiles, 3 coaching workflows, auto-update support
+- **v1.3.0** — Semantic search + ambient recall: local embeddings, vector index at `{vault}/.cortex/search.db`, `search_vault` / `recall_related` / `reindex_vault` MCP tools, `/cortex-index` slash command, auto re-embed hook
 
 ---
 
