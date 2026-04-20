@@ -1,5 +1,17 @@
 # Claude Cortex Plugin — Changelog
 
+## v1.3.1 — 2026-04-19
+
+**Auto-install MCP dependencies on launch.**
+
+- New `mcp-servers/cortex-vault/bootstrap.js` wrapper is now the entry point the MCP client invokes. Before loading the server, it verifies required deps (`@modelcontextprotocol/sdk`, `@huggingface/transformers`, `better-sqlite3`, `sqlite-vec`, `js-yaml`) and runs `npm install` if any are missing.
+- Survives plugin cache refreshes — Claude Code periodically re-extracts the plugin source, which was wiping `node_modules/` and silently breaking every cortex-vault MCP tool until the user manually reinstalled.
+- Zero overhead on happy path (a few `fs.existsSync` checks). Slow only on first post-refresh launch while deps install.
+- `.mcp.json` now points at `bootstrap.js` instead of `server.js`.
+- New `lib/bootstrap-check.js` with `needsInstall()` — extracted for testability. Covered by 5 unit tests.
+
+Fixes the silent post-update failure observed on the v1.3.0 rollout.
+
 ## v1.3.0 — 2026-04-19
 
 **Semantic search + ambient recall.**

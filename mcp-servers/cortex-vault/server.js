@@ -30,7 +30,7 @@ registerTool(require('./tools/recall-related.js'));
 registerTool(require('./tools/reindex-vault.js'));
 
 const server = new Server(
-  { name: 'cortex-vault', version: '1.3.0' },
+  { name: 'cortex-vault', version: '1.3.1' },
   { capabilities: { tools: {} } }
 );
 
