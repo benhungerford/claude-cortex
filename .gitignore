@@ -6,3 +6,6 @@ node_modules/
 tmp/
 .cache/
 mcp-servers/cortex-vault/node_modules/
+
+# Worktrees
+.worktrees/
