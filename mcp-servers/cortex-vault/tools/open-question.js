@@ -2,19 +2,10 @@
 
 const path = require('node:path');
 const fs = require('node:fs');
-const { getVaultPath } = require('../lib/vault-path.js');
+const { getVaultPath, resolveInsideVault, VaultPathError } = require('../lib/vault-path.js');
 const { readFile, writeFile, appendFile } = require('../lib/file-ops.js');
 const { extractFrontmatter, stringifyYaml } = require('../lib/yaml.js');
-
-function formatTimestamp(date) {
-  const pad = (n) => String(n).padStart(2, '0');
-  const y = date.getFullYear();
-  const m = pad(date.getMonth() + 1);
-  const d = pad(date.getDate());
-  const h = pad(date.getHours());
-  const min = pad(date.getMinutes());
-  return `${y}-${m}-${d} ${h}:${min}`;
-}
+const { formatChangelogEntry } = require('../lib/changelog-format.js');
 
 function todayDateStr() {
   const now = new Date();
@@ -127,7 +118,18 @@ async function handler(args, vaultOverride) {
     };
   }
 
-  const fullDirPath = path.join(vault, project_path);
+  let fullDirPath;
+  try {
+    fullDirPath = resolveInsideVault(vault, project_path);
+  } catch (err) {
+    if (err instanceof VaultPathError) {
+      return {
+        content: [{ type: 'text', text: `Invalid project_path: ${err.message}` }],
+        isError: true
+      };
+    }
+    throw err;
+  }
   const contextFileName = findProjectContextFile(fullDirPath);
 
   if (!contextFileName) {
@@ -173,13 +175,16 @@ async function handler(args, vaultOverride) {
 
   writeFile(filePath, finalContent);
 
-  // Append changelog entry
-  const timestamp = formatTimestamp(new Date());
-  const actionLabel = action === 'add' ? 'UPDATED' : 'UPDATED';
+  // Append changelog entry via shared formatter.
   const noteText = action === 'add'
     ? `Added open question: "${text}"`
     : `Resolved open question matching "${text}": ${resolution}`;
-  const entry = `[${timestamp}] ${actionLabel} | FILE: ${contextFileName} | DEST: ${project_path}/ | NOTE: ${noteText}`;
+  const entry = formatChangelogEntry({
+    action: 'UPDATED',
+    file: contextFileName,
+    dest: `${project_path}/`,
+    note: noteText
+  });
   const changelogPath = path.join(vault, '_changelog.txt');
   appendFile(changelogPath, entry);
 

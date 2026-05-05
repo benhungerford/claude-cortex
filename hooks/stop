@@ -10,6 +10,14 @@ set -euo pipefail
 PLUGIN_DATA="${CLAUDE_PLUGIN_DATA:-$HOME/.claude/cortex/plugin-data}"
 CONFIG_FILE="$HOME/.claude/cortex/config.json"
 
+# python3 is required to parse stdin JSON and apply pending memory updates.
+# Without it we cannot safely flush — exit silently and leave pending files
+# for the next session that does have python3.
+if ! command -v python3 &>/dev/null; then
+    printf '{}\n'
+    exit 0
+fi
+
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 escape_for_json() {

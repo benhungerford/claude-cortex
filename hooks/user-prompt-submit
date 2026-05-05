@@ -7,6 +7,13 @@ set -euo pipefail
 # and outputs a <cortex-hint> tag if a match is found.
 # All trigger patterns are hardcoded for speed (<100ms target).
 
+# python3 is required to extract user_prompt from the stdin JSON. If missing,
+# exit silently — trigger-phrase routing is best-effort.
+if ! command -v python3 &>/dev/null; then
+    printf '{}\n'
+    exit 0
+fi
+
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 escape_for_json() {

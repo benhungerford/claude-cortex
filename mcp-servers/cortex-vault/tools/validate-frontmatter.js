@@ -1,7 +1,7 @@
 'use strict';
 
 const path = require('node:path');
-const { getVaultPath } = require('../lib/vault-path.js');
+const { getVaultPath, resolveInsideVault, VaultPathError } = require('../lib/vault-path.js');
 const { readFile } = require('../lib/file-ops.js');
 const { extractFrontmatter } = require('../lib/yaml.js');
 
@@ -74,9 +74,18 @@ async function handler(args, vaultOverride) {
     };
   }
 
-  const fullPath = path.isAbsolute(file_path)
-    ? file_path
-    : path.join(vault, file_path);
+  let fullPath;
+  try {
+    fullPath = resolveInsideVault(vault, file_path);
+  } catch (err) {
+    if (err instanceof VaultPathError) {
+      return {
+        content: [{ type: 'text', text: `Invalid file_path: ${err.message}` }],
+        isError: true
+      };
+    }
+    throw err;
+  }
 
   const content = readFile(fullPath);
   if (content === null) {
