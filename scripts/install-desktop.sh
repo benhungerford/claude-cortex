@@ -54,9 +54,13 @@ for CP in "${COWORK_STORES[@]}"; do
 import json, os, shutil, hashlib, datetime, subprocess
 CP = os.environ["CP"]
 SRC = os.environ["PLUGIN_ROOT"]
-MP, PN, VER = "claude-cortex-local", "claude-cortex", "1.1.0"
+with open(os.path.join(SRC, ".claude-plugin", "plugin.json")) as f:
+    PN = json.load(f)["name"]
+with open(os.path.join(SRC, ".claude-plugin", "plugin.json")) as f:
+    VER = json.load(f)["version"]
+MP = "claude-cortex-local"
 PID = f"{PN}@{MP}"
-now = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")
+now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
 for sub in ("cache", "marketplaces", ".install-manifests"):
     os.makedirs(f"{CP}/{sub}", exist_ok=True)

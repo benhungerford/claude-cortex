@@ -13,6 +13,11 @@ function openDb(vaultPath) {
 
   const dbPath = path.join(cortexDir, 'search.db');
   const db = new Database(dbPath);
+  // WAL keeps readers (search_vault, recall_related) from blocking on
+  // concurrent writers (post-tool-use re-embed, reindex_vault). busy_timeout
+  // covers the brief contention window between sqlite-vec writes.
+  db.pragma('journal_mode = WAL');
+  db.pragma('busy_timeout = 5000');
   sqliteVec.load(db);
 
   db.exec(`
