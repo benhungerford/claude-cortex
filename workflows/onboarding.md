@@ -1,20 +1,46 @@
 <required_context>
 This workflow runs when Cortex detects no personality file in the vault path.
-It drives the full first-run experience: introduction, Obsidian setup, discovery,
-tool connection, vault build, developer setup (if applicable), and closing.
+It drives the full first-run experience: introduction, surface + platform detection,
+Obsidian setup, discovery, tool connection, vault build, developer setup
+(if applicable), and closing.
+
+It is calibrated to span: knowledge workers, freelancers, agencies, solo founders,
+academics, regulated-industry professionals (legal/healthcare/finance/EU),
+operational businesses (trades, hospitality, ops queues), students, hobbyists,
+non-developers and senior engineers — across macOS, Windows, and Linux,
+Claude Code (CLI) and Claude Desktop, with adaptive tone and accessibility
+considerations.
 </required_context>
 
 <behavioral_rules>
 
-- Be warm, conversational, and encouraging. This may be the user's first time using an AI-managed knowledge system.
-- Ask **one question at a time**. Wait for the response before moving on.
-- Never reference "the setup wizard", "onboarding", or "the skill". You are just Claude, helping them get set up.
-- Be patient with non-technical users. Never assume they know technical terms.
-- Adapt your language to match theirs. If they say "clients", you say "clients". If they say "campaigns", you say "campaigns".
-- Keep track of all captured values throughout the conversation. You will need them during the build phase.
-- The person who gave them the ZIP (Ben or another evangelist) may be present. The flow should be self-sufficient regardless.
+- **One question at a time.** Wait for the response before moving on. Honor anything the user already volunteered — never re-ask for what they just said.
+- **Match the user's vocabulary.** If they say "matters" you say "matters". If they say "properties" you say "properties". This applies to the *files on disk too*, not just the conversation. Folder names, sub-note names, hub titles must use the user's words.
+- **No jargon walls.** Never say "vault", "MCP", "frontmatter", "YAML", "schema", "bucket_term", "connector" without translating in the same sentence. The user-facing artifacts (files they will open) must not contain Cortex internals as visible labels.
+- **Adaptive tone register.** Default register is one warm sentence per beat. If the user's first reply is ≤3 words, terse, or signals "skip the pitch", switch to **terse mode** for the remainder: no editorializing tails, no "exciting part", no "imagine the things you could do". Substantive sentences only.
+- **Never reference** "the setup wizard", "onboarding flow", or "the skill". You are just Claude, helping them get set up.
+- **Never block on one failed step.** Log the failure, note it in `personality.md` for later, keep going. The only unrecoverable failure is being unable to write `~/.claude/cortex/config.json` at all.
+- **Track every captured value.** If you reach Step 5 missing one, pause and ask — do not invent.
+- **Honor compliance signals.** Any mention of HIPAA, PHI, PII, attorney-client, privilege, GDPR, DSGVO, ITAR, FERPA, SOC2, regulated, confidential, or industry words like "patient", "matter", "advisee", "PII" → trip the regulated-industry branch. Connectors default OFF until user explicitly opts in per tool.
+- **Do not leak Cortex internals into user-facing files.** YAML frontmatter is fine because it's machine-readable. But the visible body of any file the user might open should not contain `bucket_term`, `tag_taxonomy`, `is_developer`, `progressive_features`, etc. Use the user's words for headings.
+- **The person who installed Cortex** (Ben, family member, IT) may be present. The flow must be self-sufficient regardless.
 
 </behavioral_rules>
+
+<surface_detection>
+
+Cortex onboarding can run in two surfaces. Detect before Step 4 (connector setup) — the instructions diverge.
+
+| Surface | How to detect | Connector instructions |
+|---------|--------------|----------------------|
+| **Claude Code (CLI)** | Running in terminal, `CLAUDE_CODE` or `CLAUDECODE` env vars present, no GUI window | MCP added via `claude mcp add <name>` shell command, OR via per-project `.mcp.json`. There is no Settings menu in the terminal. |
+| **Claude Desktop** | GUI app, Settings menu accessible via menu bar | Settings → Connectors → Add. OAuth flow opens browser. |
+
+If detection is ambiguous, ask once: *"Quick check — are you talking to me through the Claude desktop app or in a terminal window? It changes which clicks I'll point you at."*
+
+Store as `surface`. Use it everywhere connector instructions appear in Step 4.
+
+</surface_detection>
 
 <captured_values>
 
@@ -22,563 +48,571 @@ Track these values as the conversation progresses:
 
 | Variable | Source | Description |
 |----------|--------|-------------|
-| `vault_path` | Step 2 | Absolute path to the Obsidian vault |
-| `vault_name` | Step 2 | Name the user chose for their vault |
-| `platform` | Step 2 | "macos" or "windows" — detected from environment |
-| `user_name` | Step 3 Q1 | User's first name |
+| `surface` | Pre-Step 4 | "claude_code" or "claude_desktop" |
+| `platform` | Step 2 | "macos", "windows", or "linux" |
+| `arch` | Step 2 | CPU arch (apple_silicon, intel, x86_64, arm64) — only if needed for installer choice |
+| `tone_register` | Step 1 | "warm" (default) or "terse" (detected from user reply length / phrasing) |
+| `accessibility` | Step 1/2 | Object: `{screen_reader: bool, low_vision: bool, locale_hint: string}` — only set if user signals or environment exposes |
+| `vault_path` | Step 2 | Absolute path to the vault folder |
+| `vault_name` | Step 2 | Name the user chose |
+| `build_mode` | Step 2 | "fresh" (default) / "sandbox" (subfolder of existing vault) / "metadata_only" (write only personality+memory+changelog, no scaffold) |
+| `existing_vault_path` | Step 2 | Set when user has prior Obsidian vault and we're sandboxing or referencing it |
+| `obsidian_installed` | Step 2 | Boolean; if false and admin rights blocked install, fall back to "vault folder only, open in editor of choice" |
+| `user_name` | Step 3 Q1 | First name |
 | `user_role` | Step 3 Q1 | Role/title |
-| `user_company` | Step 3 Q1 | Company or "freelance" / "independent" |
+| `user_company` | Step 3 Q1 | Company / "freelance" / "independent" / "academic institution" |
 | `user_industry` | Step 3 Q1 | Industry or domain |
-| `self_description` | Step 3 Q1 | Their own words for what they do |
-| `is_developer` | Step 3 Q1 | Boolean — did they mention coding, development, engineering? |
-| `bucket_term` | Step 3 Q2 | What they call their top-level work categories (e.g., "clients", "projects", "accounts") |
-| `buckets` | Step 3 Q2 | Named list of buckets with types |
-| `project_term` | Step 3 Q2 | What they call individual work efforts within buckets |
-| `weekly_rhythm` | Step 3 Q3 | Meeting patterns, deliverables, collaborators for one bucket |
-| `sub_note_types` | Step 3 Q3 | What sub-notes belong in each bucket (derived from what they describe) |
-| `tools` | Step 3 Q4 | List of tools they use daily |
+| `self_description` | Step 3 Q1 | Their actual words — preserved verbatim |
+| `is_developer` | Step 3 Q1 | True only if user self-references coding ("I code", "my repos", "I build software"). Mentions of "we have devs" or "the engineering team" do NOT flip this. |
+| `compliance_constraints` | Step 3 Q1/Q4 | List: ["HIPAA", "attorney-client", "GDPR", "FERPA", "SOC2", "ITAR", "PCI", ...] — empty if none. Auto-set from industry signals; confirmed if user mentions any compliance term. |
+| `data_residency_acknowledged` | Step 1 | Boolean — user has heard "vault is local, files stay on this machine, only what you send to me in chat goes to Anthropic" |
+| `vault_archetype` | Step 3 Q2 | "portfolio" (3-15 named buckets), "queue" (operational tickets/jobs/transactions, often >20), "single_product" (one main thing with workstreams), "hybrid" (multiple axes — e.g. properties + contractors) |
+| `bucket_term` | Step 3 Q2 | Top-level category word in user's vocabulary |
+| `buckets` | Step 3 Q2 | Named list with optional types |
+| `child_term` | Step 3 Q2 | Word for items nested within a bucket — only set if `nested_buckets=true` |
+| `nested_buckets` | Step 3 Q2 | Boolean — does each bucket contain multiple distinct pieces of work? |
+| `secondary_axis` | Step 3 Q2 | Optional: cross-cutting roster like "contractors", "vendors", "stakeholders". Only set if user mentions one. |
+| `weekly_rhythm` | Step 3 Q3 | Meeting patterns, deliverables, collaborators |
+| `sub_note_types` | Step 3 Q3 | Sub-notes per bucket, named in user's vocabulary (not the generic mapping table labels) |
+| `tools` | Step 3 Q4 | Full list as user said them |
 | `pain_point` | Step 3 Q5 | What keeps falling through the cracks |
-| `connected_tools` | Step 4 | Tools successfully authenticated via MCP |
-| `manual_tools` | Step 4 | Tools noted for manual input |
+| `connected_tools` | Step 4 | Tools successfully authenticated |
+| `manual_tools` | Step 4 | Tools without connector OR user-declined-due-to-compliance |
+| `available_not_connected` | Step 4 | Tools with available connectors but user opted out (with reason) |
 
 </captured_values>
 
 <flow>
 
-## Step 1: Introduction
+## Step 1: Introduction + Contract + Data Residency
 
-Present this when the workflow activates:
+Open with a single sentence + an explicit shape so structure-needing users have the contract:
 
-> "This is Cortex — a system that turns Claude and Obsidian into your second brain. By the end of this conversation, Claude will know your world and remember it across every future conversation. Let's get started."
+> "This is Cortex — a short setup that turns Claude and Obsidian into a memory layer for your work. The shape: 5 questions, then I build the folder structure, then we test it. About 10 minutes. Sound good?"
+
+If the user replies in ≤3 words or says anything like "skip the pitch", "go", "yes", "k" → set `tone_register = "terse"` for the rest of the session. Otherwise keep default `warm`.
+
+**Volunteer the data story before they have to ask.** Output exactly one sentence:
+
+> "One thing up front: your vault is just a folder of plain text on this machine — nothing leaves until you connect a cloud tool, and you'll approve each one."
+
+Set `data_residency_acknowledged = true`.
+
+If user mentions GDPR, HIPAA, privilege, regulated, sensitive, confidential, PHI, PII at any point in this turn — append:
+
+> "I'll flag this as a regulated-data setup, which means I won't connect any cloud tool by default. We'll go tool-by-tool later and you decide."
+
+And add the relevant entry to `compliance_constraints`.
 
 ---
 
-## Step 2: Obsidian Setup
+## Step 2: Platform, Obsidian, Vault
 
-**Detect the platform** from the environment (macOS vs. Windows). Store as `platform`.
+### 2.1 Detect platform
 
-**Check if Obsidian is installed** by looking for the application on the system:
-- macOS: Look for `/Applications/Obsidian.app` or `~/Applications/Obsidian.app`
-- Windows: Check Program Files or search for the Obsidian executable
+Detect from environment: `macos`, `windows`, or `linux`. Store as `platform`. On macOS, also detect `arch` (apple_silicon vs intel) for installer link.
 
-**If Obsidian is not installed:**
+If detection is ambiguous, ask once: *"What kind of computer are you on — Mac, Windows, or Linux?"*
 
-> "First, we need Obsidian — it's a free app where your knowledge will live. Claude reads and writes to it so nothing gets lost."
+### 2.2 Check Obsidian install
 
-Walk them through the install based on `platform`:
-- macOS: "Download it from obsidian.md. Once it's installed, open it and let me know."
-- Windows: "Download it from obsidian.md. Run the installer, then open it and let me know."
+| Platform | Where to check |
+|----------|---------------|
+| macOS | `/Applications/Obsidian.app` or `~/Applications/Obsidian.app` |
+| Windows | `%LOCALAPPDATA%\Obsidian\Obsidian.exe` or `%PROGRAMFILES%\Obsidian\Obsidian.exe` |
+| Linux | `which obsidian` (AUR/flatpak) OR check `/var/lib/flatpak/exports/bin/md.obsidian.Obsidian` OR `~/.local/share/applications/obsidian.desktop` OR check for any `Obsidian-*.AppImage` in `~/Applications` or `~/Downloads` |
 
-Wait for confirmation before continuing. If the install fails, provide the direct download link (https://obsidian.md/download) and manual instructions. Do not abandon the flow.
+### 2.3 Install if missing
 
-**If Obsidian is installed (or once installed):**
+Per platform:
 
-> "Now let's create your vault — that's just a folder where all your notes will live. I'd suggest putting it in your Documents folder, but it can be anywhere you like. What would you like to name it?"
+**macOS** (terse mode example shown — drop the warm framing if `tone_register=terse`):
+> "Grab Obsidian from obsidian.md/download. Drag it to Applications. **Heads up:** the first time you open it, macOS may say 'Apple cannot check it for malicious software' — right-click the app icon and choose Open, then click Open in the dialog. Tell me when it's open."
 
-Let the user pick a name. If they're unsure, suggest something simple like "Vault" or "Second Brain". Confirm the full path:
+**Windows:**
+> "Grab Obsidian from obsidian.md/download. Run the installer (you may get a SmartScreen warning — click 'More info' → 'Run anyway'). Tell me when it's open."
 
-> "Great — I'll set up your vault at `[vault_path]`. Sound good?"
+If user is on a corp-managed machine and admin rights are blocked, switch to fallback:
+> "Looks like IT may block installs. We can still create the folder and you can open it in any text editor. You'd lose Obsidian's UI but keep everything else. Want to do that?"
+> Set `obsidian_installed = false`. Continue.
 
-Store their chosen name as `vault_name` and the full resolved path as `vault_path`. Resolve `~` to the user's home directory.
+**Linux:**
+> "Pick whichever fits your setup: AUR (`yay -S obsidian`), Flatpak (`flatpak install flathub md.obsidian.Obsidian`), or the AppImage from obsidian.md/download. Tell me when it's installed."
 
-**If the user has an existing Obsidian vault:**
+If install fails for any reason, do NOT block the flow. Switch to "vault folder only" mode and proceed.
 
-> "I see you already have a vault. Cortex works best with a fresh vault that's built around you. I'll create a new one, but I can copy over any notes from your existing vault that you'd like to keep. Want me to do that after we finish setting up?"
+### 2.4 Critical Obsidian first-launch instruction
 
-Note their preference. Never modify the original vault. Handle the copy after the build in Step 5.
+Before the user opens Obsidian for the first time, say this **regardless of platform**:
+
+> "When Obsidian opens it'll show a 'Create new vault' / 'Open folder as vault' screen. **Don't click anything yet** — I'm going to make the folder, then I'll tell you to point Obsidian at it. Otherwise we'll end up with two vaults in different places."
+
+This avoids the dual-vault collision documented in onboarding test runs.
+
+### 2.5 Pick or detect existing vault
+
+If you can detect an existing Obsidian vault directory (look for `.obsidian/` folder under `~/Documents/`, `~/Obsidian/`, `~/notes/`, or any path the user volunteers):
+
+> "I see you already have an Obsidian vault at `[path]`. Three options:
+> 1. **Sandbox into it** — I create a `Cortex/` subfolder and only touch that. Your existing notes are untouched.
+> 2. **Fresh vault** — I create a new vault somewhere else. Your old one stays where it is.
+> 3. **Metadata-only** — I add a personality file + changelog at the root of your existing vault and don't create any folders. Best if you already have a structure you like.
+>
+> Which?"
+
+Store choice as `build_mode`. Default to `sandbox` if user is unsure.
+
+If no existing vault detected:
+> "Where should the folder live? Default is `~/Documents/[name]`. What do you want to call it?"
+
+Store `vault_path`, `vault_name`, `build_mode = "fresh"`.
+
+### 2.6 Now point Obsidian at it
+
+Once the folder exists:
+> "OK — in Obsidian, click 'Open folder as vault' and pick `[vault_path]`."
+
+Wait for confirmation. If `obsidian_installed = false`, skip this and tell them they can open the folder in any text editor.
+
+### 2.7 Accessibility check
+
+If the user has signaled screen-reader use, low vision, or you detect VoiceOver / NVDA / Orca cues:
+- Add a note: *"Obsidian's macOS accessibility has rough edges. If you'd rather edit in your usual editor (Ulysses, VS Code, etc.) and just keep the folder open in Finder, that works too — Cortex doesn't require Obsidian's UI."*
+- Set `accessibility.screen_reader = true`.
+- Store all build narration as **spoken file-by-file** rather than "watch your vault".
+- Skip echoing full file paths and YAML in monospace blocks during build.
 
 ---
 
 ## Step 3: Discovery
 
-Ask these five questions one at a time. Wait for each response before asking the next. Adapt follow-ups based on what the user says. The goal is to understand their world in their own words.
+Five questions. One at a time. Wait for each response. **Never re-ask for something the user already volunteered in a previous answer.**
 
-### Question 1: "What do you do?"
+### Q1: "What do you do?"
 
-> "Tell me about yourself — what's your role, where do you work, and what does your day-to-day look like?"
+> "Tell me about yourself — your role, where you work, what your day-to-day looks like."
 
-This is intentionally open-ended. Let them talk. From their response, extract:
-- `user_name` — ask if they didn't mention it: "By the way, what should I call you?"
-- `user_role` — their job title or role description
-- `user_company` — their company or organization (ask if not mentioned)
-- `user_industry` — the industry or domain they work in
-- `self_description` — capture their actual words, not a sanitized version
-- `is_developer` — set to `true` if they mention coding, repos, development, engineering, building software/websites/apps
+Extract:
+- `user_name` — ask only if not obvious from context: *"What should I call you?"*
+- `user_role`
+- `user_company` — ask only if relevant and missing
+- `user_industry`
+- `self_description` — **their exact words, not a sanitized rewrite**
+- `is_developer` — set `true` ONLY if user self-references coding work (writes code, owns repos, builds software). Mentions of having devs on the team do NOT count. Default false.
+- **Industry compliance auto-detect** — if industry ∈ {law, healthcare, finance, government, defense, K-12 / higher ed, mental health, accounting} → add the appropriate constraint to `compliance_constraints` and confirm:
+  > "Sounds like your work probably involves [HIPAA / privileged client info / FERPA / etc.] — I'll keep cloud connectors off by default. We'll opt in tool-by-tool."
 
-Summarize back briefly:
+Summarize back in one sentence (warm) or echo (terse):
+> warm: "Got it — you're [Name], [role] at [company]. [One-line reflection of their work, no editorializing tail.]"
+> terse: "[Name] · [role] · [company]. Continuing."
 
-> "Got it — you're [Name], [role] at [company]. [One sentence reflecting what they said about their work.]"
+### Q2: "What's the shape of your work?"
 
-### Question 2: "What are the big buckets?"
+Open with a vocabulary menu that covers the broad working populations, not just agency:
 
-> "When you think about your work, what are the big categories or buckets? Some people think in terms of clients, others in projects, departments, accounts, or campaigns. What feels natural to you?"
+> "When you think about your work, what are the big categories? People variously call these clients, projects, matters, cases, properties, locations, services, accounts, initiatives, campaigns, areas, manuscripts, advisees, tickets, requests — what feels natural to you?"
 
-From their response, extract:
-- `bucket_term` — the word they use for top-level categories (clients, projects, accounts, etc.)
-- `buckets` — the actual list of named buckets with types if mentioned
-- `project_term` — what they call individual work items within buckets, if different from `bucket_term`
+Extract:
+- `bucket_term` — the user's word, verbatim
+- `buckets` — actual named list (ask gently if vague: *"Can you name 2 or 3 currently active so I have something to build?"*)
 
-If their answer is vague, prompt gently:
+**Then ask the nesting follow-up:**
 
-> "Can you name 2 or 3 of your current [bucket_term] for me? Just so I can build something real."
+> "Within each [bucket_term], do you have multiple distinct pieces of work, or is each one a single thing?"
 
-### Question 3: "What does a week look like?"
+- If user says nested → set `nested_buckets = true`, ask: *"What do you call those? Projects, deliverables, tickets, jobs?"* Store as `child_term`.
+- If user says single → `nested_buckets = false`, `child_term = bucket_term`.
 
-> "Pick one of those [bucket_term] — maybe the one you're spending the most time on right now. What does a typical week look like in it? Meetings, deliverables, who you work with?"
+**Then ask about cross-cutting axes:**
 
-From their response, extract:
-- `weekly_rhythm` — meeting patterns, deliverables, collaborators
-- `sub_note_types` — derive what sub-notes each bucket should have based on what they describe:
+> "Anything else that runs across all your [bucket_term] — vendors, contractors, stakeholders, referral partners — that you'd want to track separately?"
 
-| If they mention... | Create sub-note type |
-|-------------------|---------------------|
-| Design reviews, mockups, brand assets | Design System |
-| Technical decisions, architecture, stack choices | Tech Stack & Architecture |
-| Strategy, goals, roadmap | Strategy |
-| Deliverables, milestones, deadlines | Deliverables Tracker |
-| Content, copy, editorial | Content Tracker |
-| Analytics, metrics, reporting | Analytics & Reporting |
-| Budget, proposals, contracts | Business & Contracts |
+- If yes → store as `secondary_axis` (name it in their vocabulary). The build will scaffold it as a top-level peer to the bucket folder.
+- If no → skip.
 
-Every bucket always gets a `Changelog` and `Notes/` folder regardless of what's mentioned.
+**Determine `vault_archetype`:**
 
-### Question 4: "What tools do you live in?"
+| Signal | Archetype |
+|--------|-----------|
+| 3–15 named buckets, each a discrete piece of work | `portfolio` |
+| >20 active items, recurring queue (jobs / tickets / transactions / requests) | `queue` |
+| One product / practice / firm with workstreams or sub-areas | `single_product` |
+| Multiple orthogonal axes (e.g. properties + contractors, locations + vendors) | `hybrid` |
 
-> "What tools do you use every day? Email, project management, design tools, docs — anything where important work information lives."
+For `queue` archetype, do NOT scaffold one folder per item. Instead create a single `[bucket_term]/` folder with an active-items log and a template for new items.
 
-Capture the full list as `tools`. For each tool, note whether it's likely to have an MCP connector available in Claude. Common tools with known connectors:
+### Q3: "What does a week look like?"
 
-| Tool | Likely MCP Connector |
-|------|---------------------|
-| Gmail | Yes — native |
-| Google Calendar | Yes — native |
-| Monday.com | Yes — native |
-| Figma | Yes — native |
-| Google Drive | Yes — native |
-| Slack | Yes — native |
+> "Pick one of your [bucket_term] — the busiest right now. Walk me through a typical week. Meetings, deliverables, who you work with, what tools."
 
-Tools without native connectors may be buildable via Claude's MCP builder or noted as manual input sources.
+Extract `weekly_rhythm` and derive `sub_note_types` using the **archetype-aware mapping** below. Use the user's vocabulary for the file names — the table just tells you which *type* of sub-note to create; the user's words determine the *label*.
 
-### Question 5: "What keeps falling through the cracks?"
+**Industry-aware sub-note archetypes:**
 
-> "Last question — what's the thing that keeps falling through the cracks? Decisions from meetings? Action items? Project status? Email follow-ups?"
+| Industry / role signals | Sub-note types to scaffold (use user's words for labels) |
+|------------------------|--------------------------------------------------------|
+| Agency / freelance / brand | Design, Deliverables, Content, Business |
+| In-house product / PM | Strategy (only if senior), Decisions Log, Deliverables, Stakeholders |
+| Senior eng / SRE / backend | Tech Stack & Architecture, Decisions Log, Postmortems, Runbooks |
+| Junior eng / student / hobbyist | Tech Stack, Notes (skip Strategy unless user owns it) |
+| Game dev | Game Design Doc, Playtests, Tech Stack, Audio/Art |
+| Academic / research | Manuscript, Citations, Advisee Notes, Conference / Submissions |
+| Legal | Pleadings, Discovery, Correspondence, Time & Billing |
+| Healthcare / clinical (non-PHI ops only) | Admin, Supervision, CE / Professional Dev, Referral Partners |
+| Data / analyst | Query Library, Methodology, Stakeholders, Deliverables |
+| Trades / field service / construction | Punch List, Draws / Payments, Site Photos, Budget |
+| Real estate (sales) | Listings, Buyers, Sellers, Closings |
+| Real estate (flipping / operations) | Property Status, Contractors, Budget, Inspections |
+| Restaurant / hospitality / SMB ops | Operations, Vendors, Inventory, Marketing |
+| Consulting | Engagement Plan, Decisions, Deliverables, Stakeholders |
+| Retail / e-commerce | Catalog, Marketing, Operations, Customer Service |
 
-Capture as `pain_point`. This determines the first progressive feature to suggest after onboarding. Map common pain points to features:
+**Always add:** `Changelog` and `Notes/` per bucket. **Never add** "Strategy" sub-notes for users who explicitly say strategy isn't theirs to own.
 
-| Pain Point | Maps to Progressive Feature |
-|-----------|---------------------------|
-| Meeting decisions/action items lost | `meeting_processing` |
-| No morning overview / overwhelmed starting the day | `daily_briefing` |
+If the user pushes back on a label ("don't call it that, call it Punch List") → honor immediately, no apology.
+
+### Q4: "What tools do you live in?"
+
+> "What do you use day to day? Email, project tracking, design, docs, anything where work info lives."
+
+Capture as `tools` list using user's words. Then **check live** for each:
+
+1. **For each tool**, query the live Claude connector registry (do not rely on a hardcoded table — the registry changes weekly). Categories:
+   - **Native MCP available** in Claude → guide connection per `surface` in Step 4.
+   - **Community MCP available** (e.g. Linear, Notion, Granola, GitHub, Discord, Jira, PagerDuty, Datadog) → offer to install via `claude mcp add` (Code) or via Connectors → Browse (Desktop) if path exists.
+   - **No connector** → mark `manual_tools`.
+
+2. **If `compliance_constraints` is non-empty:** Do NOT proactively pitch any cloud connector. Instead:
+   > "Because of [HIPAA / privilege / GDPR], I'm marking all of these as manual unless you specifically want a connector for one of them. Anything you want to opt in?"
+
+3. **If user is on Outlook / Teams / Microsoft 365 stack** (common for legal, healthcare, finance, EU enterprise): acknowledge there's no native connector yet and frame manual as first-class:
+   > "Outlook and Teams don't have native connectors today. Manual feeding is a real workflow — drop emails into your Inbox folder, paste meeting summaries, and the vault grows from there. Many users run this way."
+
+4. **Reference table for known tools** (kept current — this is illustrative, always check live):
+
+| Tool | Status (as of skill version) |
+|------|------------------------------|
+| Gmail, Google Calendar, Google Drive | Native |
+| Slack | Native |
+| Figma | Native |
+| Notion | Native (verify in live registry — was added late 2025) |
+| Linear | Community MCP (`@modelcontextprotocol/server-linear` or similar) |
+| Granola | Community MCP |
+| GitHub | Community MCP (`github` server) |
+| Discord | Community MCP (limited) |
+| Jira | Community MCP |
+| Monday.com | Native |
+| Outlook / Teams / SharePoint | No connector — manual |
+| Clio, Westlaw, DocuSign, Ironclad | No connector — manual (legal stack) |
+| Epic, SimplePractice, athenahealth | NEVER suggest connecting — PHI risk |
+| QuickBooks, Wave, FreshBooks, Xero | No connector — manual |
+| HubSpot, Mailchimp, Klaviyo | Mostly manual — check live |
+| DATEV, SAP, Oracle, Personio | No connector — manual (EU enterprise) |
+| Toast, Square, Shopify, Jobber, ServiceTitan | No connector — manual (SMB ops) |
+| Zotero, EndNote, JSTOR | No connector — manual (academic) |
+| SQL Server, Tableau, PowerBI, Looker | No connector — manual (analytics) |
+| Asana, Trello, ClickUp, Basecamp | Mostly manual — check live |
+
+### Q5: "What keeps falling through the cracks?"
+
+> "Last one — what's the thing you keep losing track of? Decisions from meetings? Action items? Deadlines? Money owed?"
+
+Capture as `pain_point`. Map to `next_suggestion`:
+
+| Pain Point | → Feature |
+|-----------|----------|
+| Meeting decisions / action items lost | `meeting_processing` |
+| Overwhelmed starting the day | `daily_briefing` |
 | Projects going stale, missed deadlines | `project_health` |
-| Repeating solutions / losing useful patterns | `knowledge_extraction` |
+| Repeating same solutions / losing useful patterns | `knowledge_extraction` |
 | Losing track of what happened last week | `weekly_review` |
 | Email follow-ups falling through | `email_triage` |
 | Tasks scattered across tools | `task_sync` |
+| Client / vendor / patient communication evaporating | `conversation_threading` |
+| Forgetting who I billed for what | `transaction_log` |
+
+If the user names multiple pains, capture all in `pain_points.secondary` and pick the most acute as primary.
 
 ---
 
-## Step 4: Connect Tools
+## Step 4: Connect Tools — Surface-Aware
 
-Based on the tools mentioned in Question 4:
+**Hard cap: connect at most 2 tools during onboarding.** Queue the rest for a later `/cortex-connect-tools` skill. The marathon-OAuth pattern kills users with limited attention or limited time.
 
-> "You mentioned using [tool list]. Let's connect the ones we can so your vault starts with real data in it."
+> "Let's wire up the most important one or two now. We can do the rest later — connecting more than two right now tends to drag the setup out."
 
-Set expectations for the manual steps:
+Ask which 1–2 tools matter most. Then per surface:
 
-> "This part requires you to click through some settings — I'll tell you exactly where to go, but you're the one granting access."
+### If `surface = claude_code`:
 
-**For each tool in `tools`:**
+> "You're in the terminal, so connectors get added with a shell command, not a Settings menu. For [Tool], run this in another terminal tab: `claude mcp add <tool> -- <command>`. I'll give you the exact command. When done, type `claude mcp list` to confirm. Tell me when it's connected."
 
-1. **Check if a native MCP connector is available** in Claude's settings.
-2. **If yes:** Guide the user to Claude settings to add and authenticate it. Be specific about where to click and what to authorize:
-   > "To connect [Tool], go to your Claude settings, find the Integrations or Connectors section, and add [Tool]. You'll need to sign in and grant access. Let me know when you're done."
-3. **If no native connector:** Evaluate whether Claude's MCP builder can create a custom connector for this tool. If feasible, guide the user through that process.
-4. **If no connector is feasible:** Note it as a manual input source:
-   > "[Tool] doesn't have an automatic connector yet, but you can still feed that information into Cortex by dropping notes in your Inbox or telling me about it in conversation."
+Provide the exact command per tool. Examples:
+- Gmail (via official Anthropic gmail MCP): `claude mcp add gmail -- npx -y @anthropic/gmail-mcp`
+- Linear (community): `claude mcp add linear -- npx -y @linear/mcp`
+- GitHub: `claude mcp add github -- npx -y @modelcontextprotocol/server-github`
 
-After each successful connection, confirm:
+(Always check the current registry for the right invocation.)
 
-> "Connected. I can now pull data from [Tool]."
+### If `surface = claude_desktop`:
 
-If a connection fails, do not block:
+> "Open Settings (⌘, on Mac, Ctrl+, on Windows) → Connectors → Add. Search for [Tool], click Connect, sign in. Tell me when it's done."
 
-> "No worries — we can set that up later. Let's keep going."
+For both surfaces: after connection succeeds, confirm:
+> "Connected. Pulling [Tool] context now."
 
-Track results:
-- `connected_tools` — tools successfully authenticated via MCP
-- `manual_tools` — tools without connectors, noted for manual input
+If connection fails or is declined:
+> "No worries. Marked [Tool] as manual — you can drop info into the Inbox or just tell me about it in chat. We can revisit later."
 
-If the user has no tools to connect, skip this step entirely:
+Track results in `connected_tools`, `manual_tools`, or `available_not_connected`.
 
-> "No problem — your vault will start empty and fill up as you use it. Let's build it."
+**If `compliance_constraints` non-empty:** Skip the proactive pitch entirely. Confirm what the user opted into earlier in Q4 and move on.
+
+**If 0 tools to connect:** Skip cleanly:
+> "Nothing to connect today. The vault grows as you use it."
 
 ---
 
 ## Step 5: The Build
 
-> "Now for the exciting part. Watch your Obsidian vault — I'm about to build your second brain."
+Branch by `build_mode`:
 
-Build the vault in this order. The user should be watching Obsidian as folders and files appear.
+### 5.0 Always: Write Cortex global config
 
-### 5.0: Write Cortex global config
-
-Before touching the vault, persist the vault location so Cortex can find it from any working directory in any future session.
-
-1. Create `~/.claude/cortex/` if it doesn't exist.
+1. Create `~/.claude/cortex/` if missing.
 2. Write `~/.claude/cortex/config.json`:
-
    ```json
    {
      "vault_path": "<vault_path>",
      "schema_version": 1
    }
    ```
+   On Windows, `vault_path` must use forward slashes OR escaped backslashes. Use forward slashes — they work on Windows and avoid escape errors.
+3. Confirm briefly:
+   > warm: "Saved Cortex config — I'll find your vault from anywhere now."
+   > terse: "Config saved."
 
-3. Briefly confirm: *"Saved Cortex config — I'll be able to find your vault from anywhere now."*
+If this write fails (permission denied), STOP. Surface the exact error and instructions:
+> "Can't write to `~/.claude/cortex/config.json`. Run this once: `mkdir -p ~/.claude/cortex && chmod u+w ~/.claude/cortex` and tell me when done."
 
-### 5.1: Core Scaffold
+### 5.1 Branch by build_mode
 
-Create in `vault_path`:
+| Mode | What runs |
+|------|-----------|
+| `fresh` | 5.2, 5.3, 5.4, 5.5, 5.6, 5.7, 5.8 |
+| `sandbox` | Same as fresh, but everything goes inside `<existing_vault_path>/Cortex/`. Existing files outside that folder are never touched. |
+| `metadata_only` | 5.2 (personality + memory + changelog only), 5.5 (CLAUDE.md), 5.6 (rules into `.claude/rules/`), 5.8 (privacy_rules if needed). NO folder scaffolding. Skip 5.3, 5.4, 5.7. |
 
-1. **`memory.md`** — Populated with user identity from discovery:
-   ```markdown
-   # Vault Memory
+For accessibility (`accessibility.screen_reader = true`):
+- Replace any "watch your vault" line with: *"I'll narrate each file as I create it."*
+- After each major file, say its name and purpose ("personality file written — that's the one Cortex reads each session to know your work").
+- Do NOT echo full paths or YAML in monospace blocks.
 
-   ## User Profile
-   - Name: [user_name]
-   - Role: [user_role]
-   - Company: [user_company]
-   - Industry: [user_industry]
+For terse mode: skip narration entirely except for the final summary list.
 
-   ## Session History
-   - [today's date]: Vault created during Cortex onboarding
+### 5.2 Core scaffold (always for fresh/sandbox; partial for metadata_only)
 
-   ## Filing Decisions
-   (Accumulated as the vault is used)
+In `vault_path` (or `<existing_vault_path>/Cortex/` for sandbox):
 
-   ## Project Profiles
-   (Updated as projects evolve)
-   ```
+1. **`memory.md`** — populated with user identity from discovery (same shape as before).
+2. **`personality.md`** — see Personality Generation below.
+3. **`_changelog.txt`** — initialized with creation entries.
 
-2. **`personality.md`** — Full personality file (see Personality File Generation below)
+For fresh/sandbox only:
+4. **`_Inbox/`** with `_MOC.md`.
+5. **`Knowledge Base/`** with `_MOC.md`.
 
-3. **`_changelog.txt`** — Initialized with creation entry:
-   ```
-   [YYYY-MM-DD HH:MM] CREATED | FILE: memory.md | DEST: / | NOTE: Vault initialized during Cortex onboarding
-   [YYYY-MM-DD HH:MM] CREATED | FILE: personality.md | DEST: / | NOTE: Personality generated from discovery conversation
-   [YYYY-MM-DD HH:MM] CREATED | FILE: _changelog.txt | DEST: / | NOTE: Changelog initialized
-   ```
+### 5.3 Folder structure (fresh/sandbox, archetype-aware)
 
-4. **`_Inbox/`** folder with `_MOC.md`:
-   ```markdown
-   ---
-   type: moc
-   tags:
-     - "#type/moc"
-   created: [today's date]
-   updated: [today's date]
-   ---
+| Archetype | Structure |
+|-----------|----------|
+| `portfolio` | `<bucket_term>/<each bucket>/...` (current default) |
+| `queue` | Single `<bucket_term>/` folder with `Active.md` (live list), `Archive/`, and `_Templates/` containing one `New <child_term>.md` template. Do NOT create a folder per ticket. |
+| `single_product` | `<product_name>/` at top level with `<workstream>/` sub-folders inside |
+| `hybrid` | `<bucket_term>/` AND `<secondary_axis>/` as siblings, each with their own contents |
 
-   # Inbox — Map of Content
+If `nested_buckets = true` (portfolio with two-level): each bucket folder contains a `<child_term>/` subfolder, and project hubs go inside the child level. For example, `Clients/Acme/Projects/Q4 Launch/`.
 
-   Drop zone for unsorted content. Files here will be triaged and routed to the appropriate location.
+Use the user's exact vocabulary for every folder name.
 
-   ---
+### 5.4 Project hubs (fresh/sandbox + portfolio archetype)
 
-   ## Unprocessed
-   *No items in inbox.*
-   ```
+For each bucket the user named, build inside the appropriate level:
+1. `<Bucket Name>/` folder
+2. `_MOC.md` indexing the hub + sub-notes + meeting notes
+3. `<Bucket Name> — Context.md` from `assets/blank-template.md` (use user's `bucket_term` not the literal "Project Context" if their term is different)
+4. Sub-notes per `sub_note_types` from Q3 — **use the user's words for labels** (e.g. "Punch List.md" not "Deliverables Tracker.md" if Brooks said "punch list")
+5. `Changelog.md`
+6. `Notes/` for future meeting notes
 
-5. **`Knowledge Base/`** folder with `_MOC.md`:
-   ```markdown
-   ---
-   type: moc
-   tags:
-     - "#type/moc"
-   created: [today's date]
-   updated: [today's date]
-   ---
+If `secondary_axis` is set, scaffold its folder structure too with appropriate sub-notes (e.g. `Contractors/Mike's Crew/...`).
 
-   # Knowledge Base — Map of Content
+Log every created file/folder to `_changelog.txt`.
 
-   Reusable patterns, guides, and reference material that outlive individual [bucket_term].
+### 5.5 Pull real data (fresh/sandbox)
 
-   ---
+For each tool in `connected_tools`, pull last 24h. Same as before with one addition:
 
-   ## Articles
-   *No knowledge articles yet.*
-   ```
+**If `compliance_constraints` non-empty AND a connected tool is one that might pull regulated data** (e.g. user opted to connect work Gmail despite HIPAA): pull only metadata (subject lines, sender, timestamp) NOT body content. Surface a note:
+> "I pulled metadata only from [Tool] — not message bodies — because you flagged this as regulated. You can paste specific excerpts manually anytime."
 
-### 5.2: Folder Structure from User's Vocabulary
+Skip if no connected tools.
 
-Using `bucket_term` and `buckets` from discovery:
+### 5.6 Personalized CLAUDE.md
 
-- Create the top-level folder using their vocabulary (e.g., `Clients/`, `Projects/`, `Accounts/`)
-- If they have sub-categories (e.g., "Agency" and "Freelance" under "Projects"), create those as sub-folders
-- Create `_MOC.md` in each folder — this is the master index for that level
-- Create `_Templates/` folder (templates will be copied in step 5.7)
+Same as before — read `framework/CLAUDE.md`, replace placeholders. Add new placeholders:
+- `{{CHILD_TERM}}` → `child_term`
+- `{{ARCHETYPE}}` → `vault_archetype`
+- `{{COMPLIANCE}}` → comma-joined `compliance_constraints` or "none"
 
-### 5.3: Project Hubs
+If `{{COMPANY}}` is empty, render the surrounding sentence cleanly without dangling phrasing (e.g. "you work as a [role]" instead of "you work as a [role] at ").
 
-For each bucket the user named in Q2:
+### 5.7 Copy rules + personalize vault-structure.md (fresh/sandbox)
 
-1. Create `<Bucket Name>/` folder inside the appropriate category folder
-2. Create `_MOC.md` with links to the hub, all sub-notes, and a meeting notes section
-3. Create `<Bucket Name> — Project Context.md` hub from `assets/blank-template.md`:
-   - Replace `[Project Name]` with the bucket name
-   - Set `created` and `updated` to today's date
-   - Fill in any details captured during discovery (client, type, description)
-4. Create sub-notes based on `sub_note_types` derived from Q3. Each sub-note follows this pattern:
-   ```markdown
-   ---
-   type: sub-note
-   project: "[Bucket Name]"
-   tags:
-     - "#type/reference"
-   created: [today's date]
-   updated: [today's date]
-   ---
+Same 7 rules. Personalize `vault-structure.md` with:
+- Actual folder layout
+- Bucket / child / secondary axis terminology
+- Routing rules per archetype
 
-   # [Bucket Name] — [Sub-Note Type]
+If `build_mode = sandbox`, mark `vault-structure.md` as ADVISORY at the top: *"This describes the Cortex subfolder. Your existing vault structure outside `Cortex/` is your source of truth and Cortex won't restructure it."*
 
-   [Relevant section headers based on sub-note type]
+### 5.8 Privacy rules (always when `compliance_constraints` non-empty)
 
-   ---
-
-   *Project:* [[_MOC]]
-   ```
-5. Create `Changelog.md`:
-   ```markdown
-   ---
-   type: changelog
-   project: "[Bucket Name]"
-   tags:
-     - "#type/changelog"
-   created: [today's date]
-   updated: [today's date]
-   ---
-
-   # [Bucket Name] — Changelog
-
-   | Date | Entry |
-   |------|-------|
-   | [today's date] | [Bucket term] added to vault during initial setup |
-
-   ---
-
-   *Project:* [[_MOC]]
-   ```
-6. Create `Notes/` subfolder for future meeting notes
-
-Log every created file and folder to `_changelog.txt`.
-
-### 5.4: Pull Real Data
-
-For each tool in `connected_tools`, pull the **last 24 hours** of activity. Scope narrowly — this is a taste, not a migration.
-
-- **Gmail:** Recent email threads — summarize, identify which bucket they belong to, file context into project hubs or _Inbox
-- **Monday.com:** Active boards and items — map to buckets, pull current status and assignments into project hubs
-- **Google Calendar:** Today's and tomorrow's meetings — note recurring patterns, inform meeting rhythms in personality file
-- **Figma:** Recently accessed files — link to relevant project hubs as design file references
-- **Google Drive:** Recent documents — identify project-relevant docs and link them
-- **Slack:** Recent messages in work channels — summarize relevant threads, route to project hubs
-
-Route pulled data into the appropriate bucket folders. Anything that doesn't clearly map to a bucket goes into `_Inbox/` with a note explaining what it is.
-
-If no tools are connected, skip this step. The vault starts empty and fills up through use.
-
-### 5.5: Write Personalized CLAUDE.md
-
-Read the framework CLAUDE.md template from `framework/CLAUDE.md` in the onboarding package. Generate the vault's `CLAUDE.md` by replacing all placeholders:
-
-| Placeholder | Replace With |
-|------------|-------------|
-| `{{NAME}}` | `user_name` |
-| `{{ROLE}}` | `user_role` |
-| `{{COMPANY}}` | `user_company` |
-| `{{BUCKET_TERM}}` | `bucket_term` |
-| `<Category>` patterns | User's actual folder structure |
-
-Write the personalized `CLAUDE.md` to the vault root.
-
-### 5.6: Copy Rules
-
-Copy rule files from `framework/rules/` in the onboarding package to `vault_path/.claude/rules/`:
-
-1. `changelog-format.md`
-2. `frontmatter-and-tags.md`
-3. `frontmatter-schema.md`
-4. `meeting-threading.md`
-5. `template-conventions.md`
-6. `wikilink-guidelines.md`
-7. `vault-structure.md` — **personalize this file** with the user's actual folder structure, bucket names, and routing rules before writing it
-
-### 5.7: Copy Templates
-
-Copy templates from `framework/templates/` in the onboarding package to `vault_path/_Templates/`:
-
-1. `_MOC.md`
-2. `Meeting Notes.md`
-3. `Weekly Review.md`
-4. `Knowledge Article.md`
-5. `Daily Briefing.md`
-
-Create a `_Templates/_MOC.md` index listing all available templates.
-
-### Personality File Generation
-
-Generate `personality.md` in `vault_path` as a markdown file with YAML frontmatter. This is the single source of truth for Cortex's understanding of the user.
-
+Write `.claude/rules/privacy.md` listing every constraint and the corresponding behavior:
 ```markdown
----
-identity:
-  name: "[user_name]"
-  role: "[user_role]"
-  company: "[user_company]"
-  industry: "[user_industry]"
-  self_description: "[self_description — their actual words]"
-  is_developer: [true/false]
+# Privacy Rules
 
-mental_model:
-  bucket_term: "[bucket_term]"
-  buckets:
-    - name: "[bucket 1 name]"
-      type: "[bucket 1 type if mentioned, otherwise blank]"
-      sub_notes:
-        - "[sub-note type 1]"
-        - "[sub-note type 2]"
-    - name: "[bucket 2 name]"
-      type: "[bucket 2 type]"
-      sub_notes:
-        - "[sub-note type 1]"
-        - "[sub-note type 2]"
-  project_term: "[project_term — what they call individual work items]"
-  tag_taxonomy:
-    domain: ["[derived from industry and role — e.g., shopify, wordpress, marketing]"]
-    source: ["[derived from connected tools — e.g., meeting, email, monday, figma]"]
-    status: ["active", "archived"]
-    type: ["project-context", "moc", "meeting-notes", "reference", "knowledge", "changelog"]
+This vault is scoped to exclude regulated data. Future Cortex sessions must respect these constraints.
 
-tools:
-  connected:
-    - name: "[tool name]"
-      connector: "[MCP connector identifier]"
-      data_feeds: ["[what type of data flows — e.g., emails, board updates, calendar events]"]
-  manual:
-    - name: "[tool name]"
-      input_method: "[how data gets in — e.g., inbox drop, conversation, copy-paste]"
-  available_not_connected: []
+## Constraints
+- HIPAA: This vault must not contain PHI (patient names, identifiers, session content).
+- ...
 
-rhythms:
-  meetings: ["[recurring meetings extracted from Q3 — e.g., weekly client call, design review]"]
-  work_patterns: "[weekly rhythm summary from Q3]"
-  review_cadence: ""
-
-pain_points:
-  primary: "[pain_point from Q5]"
-  secondary: []
-
-progressive_features:
-  active:
-    - feature: "memory_management"
-      activated: "[today's date]"
-      reason: "Core feature — always active"
-    - feature: "inbox_processing"
-      activated: "[today's date]"
-      reason: "Core feature — always active"
-    - feature: "changelog_logging"
-      activated: "[today's date]"
-      reason: "Core feature — always active"
-    - feature: "wikilink_discovery"
-      activated: "[today's date]"
-      reason: "Core feature — always active"
-    - feature: "moc_maintenance"
-      activated: "[today's date]"
-      reason: "Core feature — always active"
-    - feature: "frontmatter_conventions"
-      activated: "[today's date]"
-      reason: "Core feature — always active"
-  dormant:
-    - "meeting_processing"
-    - "daily_briefing"
-    - "project_health"
-    - "knowledge_extraction"
-    - "weekly_review"
-    - "content_drafting"
-    - "goal_tracking"
-    - "email_triage"
-    - "task_sync"
-  suggested: []
-  next_suggestion: "[mapped from pain_point — see Q5 mapping table]"
----
-
-# Cortex Personality
-
-This file tells Cortex who you are and how your vault is organized. It was generated during setup and evolves as you use Cortex. You shouldn't need to edit it manually — Cortex updates it as your work changes.
+## Behavior
+- Never suggest connecting [SimplePractice / Epic / Clio / etc.]
+- Never accept inbox drops that contain identifiers — refuse and ask user to redact.
+- All connectors default OFF; opt-in is per-tool, per-session.
 ```
 
-All fields must be populated from the captured values. If a value wasn't captured (user skipped a question or gave a vague answer), use a reasonable default and note it for refinement later.
+Also add `compliance_constraints` to `personality.md` so cortex-boot reads it every session.
+
+### Personality Generation
+
+Same YAML shape as before, with these additions:
+
+```yaml
+identity:
+  ...
+  is_developer: [true/false]
+  accessibility:
+    screen_reader: [true/false]
+    low_vision: [true/false]
+    locale_hint: "[BCP-47 hint if known]"
+  compliance_constraints: ["HIPAA", "attorney-client", ...]   # empty list if none
+
+mental_model:
+  bucket_term: "[user's word]"
+  child_term: "[user's word for sub-level, equal to bucket_term if not nested]"
+  nested_buckets: [true/false]
+  secondary_axis:
+    name: "[user's word, or null]"
+    type: "[roster type — vendors, contractors, etc., or null]"
+  vault_archetype: "[portfolio / queue / single_product / hybrid]"
+  buckets:
+    - name: "..."
+      type: "..."
+      sub_notes: ["user's words"]
+
+tone_register: "warm" | "terse"
+build_mode: "fresh" | "sandbox" | "metadata_only"
+
+surface_at_setup: "claude_code" | "claude_desktop"
+
+tools: ...   # same shape, plus available_not_connected with reasons
+```
+
+`self_description` MUST be the user's exact words. Never sanitize.
 
 ---
 
 ## Step 6: Developer Setup
 
-**Only run this step if `is_developer` is `true`.**
+Only run if `is_developer = true` (strict definition: user self-references coding work).
 
-> "Since you're a developer, I can also set up Cortex for your coding sessions. When you open a project in Claude Code, Cortex will already know the project context, blockers, and recent decisions."
+### 6.1 Cross-surface install — platform-aware
 
-**6.1: Confirm the Claude Cortex plugin is installed for Claude Code**
+The `install-desktop.sh` script is **macOS-only**. Branch:
 
-If this workflow is running, the plugin is already installed at least for the current runtime. For a developer user who wants coverage across every Claude surface (CLI, Desktop Code sidebar, Cowork), run:
+| Platform | What to do |
+|----------|-----------|
+| macOS | Run `bash ${CLAUDE_PLUGIN_ROOT}/scripts/install-desktop.sh` to mirror into `~/Library/Application Support/Claude/...` and `~/.claude/plugins/` |
+| Linux | Mirror into `~/.claude/plugins/` only. There is no Claude Desktop on Linux. |
+| Windows | Mirror into `%USERPROFILE%\.claude\plugins\` and `%APPDATA%\Claude\...` (Claude Desktop on Windows uses `%APPDATA%`). Use the `install-desktop.ps1` script or run the Node port. If neither exists, skip cleanly. |
 
-```bash
-bash ${CLAUDE_PLUGIN_ROOT}/scripts/install-desktop.sh
-```
+If the platform-specific script doesn't exist, skip and inform:
+> "Cross-surface mirror isn't packaged for [platform] yet. Cortex still works in this surface — you just won't get the auto-load in the other one until you re-run setup there."
 
-This mirrors the install into `~/.claude/plugins/` (used by the CLI and the Desktop Code sidebar) and into every `cowork_plugins/` store it finds under `~/Library/Application Support/Claude/local-agent-mode-sessions/`.
+### 6.2 Offer repo pointers
 
-**6.2: Offer repo pointers**
+Same as before. For each repo: ask absolute path + matching project, hand off to `register-repo.md`.
 
-For any repos or codebases the user mentioned during discovery:
-
-> "Want me to add a project pointer to any of your repos? That way Claude will automatically load the project context when you open them."
-
-If they say yes, register each repo using `workflows/register-repo.md`. For each repo, ask for the absolute path and the matching project, then call register-repo. That workflow handles writing the stub `CLAUDE.md` and updating the registry — do not write a hand-crafted `CLAUDE.md` here.
-
-If they have several repos at once and want a faster path, offer the backfill workflow:
-
-> "If you have a folder full of project repos, I can scan it and register them all in one pass. Want me to do that instead? (yes / no)"
-
-On `yes`, run `workflows/backfill-repos.md`.
-
-If they're not sure, skip it:
-
-> "No problem — you can register repos later anytime by saying 'register this repo' inside one, or 'scan my repos' to bulk-register."
+If user is on Windows and uses GitHub Desktop, ask the path explicitly — don't assume CLI familiarity:
+> "What's the folder path? In GitHub Desktop, right-click a repo → Show in Explorer to find it."
 
 ---
 
 ## Step 7: Demo & Close
 
-After the build completes, demonstrate that context awareness is working:
+### 7.1 Demo — branch by `connected_tools`
 
-> "Your vault is built. Try me — ask me anything about your work."
+**If at least one connector pulled data:**
+> "Try me — ask anything about your work."
 
-Wait for them to ask a question. Answer using context from the vault — reference their buckets by name, pull from any data that was imported, cite their tools and rhythms. This proves persistent memory works.
+User asks. Answer with citations to the freshly pulled data and their bucket structure.
 
-Then close:
+**If no connectors (most common for regulated / SMB / hobbyist users):**
 
-> "Cortex is set up. Your vault will grow as you use it — drop meeting notes, ask me questions, tell me about your day. The more you share, the more I can help. Imagine the things you could do now."
+Don't ask "ask me anything" — there's no historical data to demo. Instead, **demo persistent capture**:
+> "Let me show you what this gives you even without connectors. Tell me one thing — a decision you made today, a deadline coming up, anything. I'll log it to your [bucket] and you'll see it appear in the vault."
+
+User says something. Log it via the capture flow. Show the file appear. Then:
+> "Next session, I'll know that. That's the loop."
+
+**If `is_developer = true` AND repos registered:** Demo by referencing the registered repo:
+> "I scanned [repo name] — here's what I see at the top level. Next time you open it in Claude Code, this context loads automatically."
+
+### 7.2 Close
+
+Drop the infomercial. Substitute a concrete next-action sentence based on captured state:
+
+| State | Closing line |
+|-------|-------------|
+| Has `next_suggestion` (from Q5) | "Cortex is set up. The thing you mentioned — [restate pain point] — maps to a feature called [name]. Say `/cortex-coach activate [feature]` when you want it on." |
+| Has compliance constraints | "Cortex is set up. Privacy rules are written into `.claude/rules/privacy.md` so future sessions respect them. Drop notes when you want; never paste regulated data." |
+| Default | "Cortex is set up. Drop notes, ask me what's going on with [first bucket name], or run `/cortex-status` anytime." |
+
+**Never use:** "Imagine the things you could do now", "the exciting part", "second brain" (after Step 1), or any infomercial register.
+
+For terse mode: cut to one sentence — *"Done. Try `/cortex-status [first bucket]`."*
 
 </flow>
 
 <error_handling>
 
-- **Obsidian install fails** — Provide the direct download link (https://obsidian.md/download) and manual instructions. Walk them through it step by step. Do not abandon the flow.
-- **Connector auth fails** — Skip the tool. Note it in the personality file under `available_not_connected`. Offer to retry later: "No worries — we can set that up later."
-- **Vague discovery answers** — Work with what you have. Use reasonable defaults. The personality file can be refined in future sessions.
-- **User wants to stop mid-flow** — Save all captured values to a partial `personality.md` with a `setup_status: incomplete` field. Next time the skill detects this partial file, offer to resume where they left off.
-- **No tools to connect** — Skip Step 4 entirely. Build the vault without pulled data. The user will feed it manually through inbox drops and conversations.
-- **Vault creation fails** (permissions, disk space) — Suggest an alternative path. Try `~/Documents/` first, then `~/Desktop/` as a fallback.
-- **Never block the entire flow on one failed step.** Log the failure, skip forward, and note what needs to be revisited.
+- **Cannot write `~/.claude/cortex/config.json`** — Surface exact permission error + fix command. Halt at 5.0.
+- **Obsidian install blocked / no admin rights** — Switch to `obsidian_installed = false`, vault folder only, edit in any text editor. Continue.
+- **macOS Gatekeeper warning** — Pre-warned in Step 2.3. If user still hits it, instruct: right-click → Open → Open in dialog.
+- **Connector auth fails** — Mark `available_not_connected` with reason. Continue. Offer retry post-build.
+- **User refuses connectors due to compliance** — Skip Step 4 entirely, ensure 5.8 (privacy rules) runs.
+- **Vague discovery answer** — Use sensible default with the user's first-mentioned vocabulary. Never invent terms they haven't said.
+- **User wants to stop mid-flow** — Save partial state to `personality.md` with `setup_status: incomplete`. Resume next session.
+- **Vault path collision (file already exists)** — Never overwrite. Ask once: alongside / different name / cancel.
+- **Connector marathon (>2 tools requested)** — Hard-cap at 2. Queue rest for `/cortex-connect-tools` follow-up.
+- **`is_developer` mis-set** — If detected wrong post-Q1 (user mentioned "we have devs" not "I code"), correct quietly and skip Step 6.
+- **User on regulated industry but flow already ran connector pitch** — Roll back, mark every connected tool for review, write privacy rules.
+- **Linux + Step 6.1** — Skip the install-desktop.sh; inform that cross-surface mirror is macOS-only.
+- **Windows path encoding in config.json** — Always write with forward slashes.
+- **Pulled data is enormous** — Cap at 24h. Cap message bodies if compliance_constraints non-empty.
+- **Unrecoverable filesystem error** — Surface, do not retry-loop.
 
 </error_handling>

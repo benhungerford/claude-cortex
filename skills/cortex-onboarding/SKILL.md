@@ -30,27 +30,35 @@ None required. The workflow collects all inputs interactively through the 5 disc
 
 Run `workflows/onboarding.md` exactly. That workflow is 7 steps:
 
-1. **Introduction** — one warm sentence, then ask the first question
-2. **Obsidian setup** — detect platform, install Obsidian if needed, create or pick a vault location
-3. **Discovery** — 5 questions, one at a time, each waiting for a response before asking the next
-4. **Tool connection** — walk through MCP connector setup for each tool the user mentioned
-5. **The Build** — write `~/.claude/cortex/config.json`, scaffold the vault folder structure, generate `personality.md` from captured values, populate `memory.md`, initialize `_changelog.txt`, copy rules from `references/`, copy templates from `assets/`
-6. **Developer setup** — only if the user answered yes to "are you a developer?" — offers to register code repos
-7. **Demo & close** — one proof-of-concept question to demonstrate vault-awareness works
+1. **Introduction + contract + data residency** — one sentence intro, explicit shape ("5 questions, ~10 min"), proactive disclosure that the vault is local
+2. **Platform / Obsidian / vault** — macOS, Windows, OR Linux branches; macOS Gatekeeper pre-warning; existing-vault detection with three modes (fresh / sandbox / metadata-only); accessibility check
+3. **Discovery** — 5 questions, one at a time, with: tone-register detection, expanded vocabulary menu, two-level bucket nesting follow-up, secondary-axis probe, archetype detection (portfolio / queue / single_product / hybrid), industry-aware sub-note mapping, strict `is_developer` heuristic
+4. **Tool connection — surface-aware** — Claude Code (CLI) vs Claude Desktop branches, hard cap at 2 tools, live registry check (not hardcoded table), regulated-industry skip
+5. **The Build** — branched by `build_mode`; writes `~/.claude/cortex/config.json` with portable paths; scaffolds folders using user's vocabulary; archetype-aware folder shape; pulls last 24h (metadata-only if regulated); writes `.claude/rules/privacy.md` when compliance constraints exist
+6. **Developer setup** — only if `is_developer = true`; platform-aware install (no Mac-only bash on Linux/Windows)
+7. **Demo & close** — branches on whether connectors pulled data; concrete next-action close, no infomercial register
 
-The workflow is already detailed and behavioral. This skill adds guardrails around it, not step-by-step duplication.
+The workflow is detailed and behavioral. This skill adds guardrails around it, not step-by-step duplication.
 
 ## Guardrails
 
-**Conversational tone.** Warm, encouraging, one question at a time. Never use the words "setup wizard", "onboarding flow", or "the skill". Never present a menu. You are just Claude, helping them get set up.
+**Conversational tone, with adaptive register.** Default is one warm sentence per beat. If the user replies in ≤3 words, terse fragments, or signals "skip the pitch" → switch to terse mode for the rest of the session. Never use "setup wizard", "onboarding flow", "the skill", "exciting part", or "imagine the things you could do now".
 
-**Match the user's vocabulary.** If they say "clients" you say "clients". If they say "projects" you say "projects". Never impose your own terminology.
+**Match the user's vocabulary, on disk too.** If they say "matter" you write `Matters/`, not `Projects/`. If they say "punch list" you create `Punch List.md`, not `Deliverables Tracker.md`. The `self_description` field in `personality.md` must be the user's own words, never sanitized.
 
-**Track captured values continuously.** The workflow lists every variable you need to hold in session state. If you reach Step 5 (The Build) without one of them, pause and ask — do not invent a default.
+**Surface awareness.** Detect Claude Code (CLI) vs Claude Desktop before Step 4. Connector instructions diverge — CLI uses `claude mcp add <name>`, Desktop uses Settings → Connectors. Never tell a CLI user to "go to Claude settings".
 
-**Never block on one failed step.** If Obsidian install fails, a connector fails, a file write fails, log it, note what needs revisiting, and keep going. The only unrecoverable failure is not being able to write `~/.claude/cortex/config.json` at all — see Failure modes.
+**Compliance defaults.** If the user mentions HIPAA / PHI / privilege / GDPR / DSGVO / FERPA / ITAR / SOC2 / regulated / confidential, OR if industry implies it (law, healthcare, finance, gov, mental health, accounting, defense, ed): set `compliance_constraints`, default ALL connectors OFF, write `.claude/rules/privacy.md` during build.
 
-**Use the user's actual words in `personality.md`.** The `self_description` field must be the user's own sentence, not a sanitized rewrite. This is how Cortex learns the user's voice for later sessions.
+**Two-level + cross-cutting hierarchies.** After Q2 ask the nesting follow-up ("does each [bucket] contain multiple distinct pieces of work?") and the secondary-axis probe ("anything that runs across all of them — vendors, contractors, stakeholders?"). Schema supports `child_term` and `secondary_axis`.
+
+**Track captured values continuously.** If you reach Step 5 (The Build) without one, pause and ask — do not invent a default.
+
+**Never block on one failed step.** Log the failure, keep going. Only unrecoverable failure: cannot write `~/.claude/cortex/config.json`.
+
+**Don't leak Cortex internals into user-facing files.** YAML frontmatter is fine (machine-readable). The visible body of any file the user opens must not contain `bucket_term`, `tag_taxonomy`, `progressive_features`, `is_developer` as visible labels — use the user's words for headings.
+
+**Accessibility.** If user signals screen reader / VoiceOver / NVDA / Orca: replace "watch your vault" with file-by-file spoken narration; skip echoing full paths and YAML in monospace; warn that Obsidian's macOS accessibility is rough and offer "vault folder + your usual editor" as an alternative.
 
 ## Worked examples
 
@@ -119,15 +127,26 @@ destructive-adjacent (creates duplicate folders) and needs confirmation.
 
 | Failure | What to do |
 |---|---|
-| Cannot write `~/.claude/cortex/config.json` (permission denied) | Surface the exact permission error. Instruct the user how to fix it (e.g. `mkdir ~/.claude/cortex && chmod u+w ~/.claude/cortex`). Do not continue past Step 5.0. |
-| Obsidian install fails | Provide the direct download link (https://obsidian.md/download). Walk them through manually. If they can't install, offer to continue and build the vault anyway — Obsidian can be opened against the vault folder later. |
-| User picks a vault path that already contains files | Ask once: "That folder already has files in it. Create the vault alongside them, or pick a different location?" Never overwrite an existing file. |
-| Connector authentication fails for a tool | Note as `available_not_connected` in `personality.md`. Continue with the next tool. Offer to retry after the build. |
-| User wants to stop mid-flow | Save captured values to `personality.md` with `setup_status: incomplete`. Next session, `cortex-boot` detects the partial file and hands back here to resume. |
-| User gives vague answers to discovery questions | Work with what you have. Use reasonable defaults (e.g., if no bucket_term given, default to "Projects"). Note the defaults in `personality.md` so they can be refined later. |
-| `is_developer=true` but no repos mentioned | Skip Step 6.2 (repo registration). Inform the user they can say "register this repo" from inside any code repo later. |
-| Vault creation fails (disk full, permissions) | Suggest `~/Documents/` as a first fallback, `~/Desktop/` as a second. If all fail, surface the system error and stop — this is unrecoverable without the user fixing their filesystem. |
-| Pulled data from a connector is enormous (e.g. 10k emails) | Scope narrowly to the last 24 hours only. This is a taste, not a migration. |
+| Cannot write `~/.claude/cortex/config.json` (permission denied) | Surface the exact permission error + fix command (e.g. `mkdir -p ~/.claude/cortex && chmod u+w ~/.claude/cortex`). Halt at Step 5.0. |
+| Obsidian install fails OR user lacks admin rights (corp / IT-managed) | Switch to `obsidian_installed = false`, vault folder only, edit in any text editor. Continue the flow. |
+| macOS Gatekeeper blocks first launch | Pre-warned in Step 2.3. If user still hits it: instruct right-click → Open → Open in dialog. |
+| Windows SmartScreen blocks installer | Instruct: click "More info" → "Run anyway". |
+| Linux platform | Step 2 has a Linux branch (AUR / Flatpak / AppImage). Step 6.1 install-desktop.sh is macOS-only and skips cleanly with a one-liner. |
+| User picks a vault path that already contains files | Ask once: alongside / different name / cancel. Never overwrite. |
+| Existing Obsidian vault detected | Offer 3 modes: `fresh` / `sandbox` (Cortex subfolder of existing) / `metadata_only` (personality+rules at root, no scaffold). Default to `sandbox`. |
+| Connector authentication fails for a tool | Note as `available_not_connected` with reason. Continue. Offer retry post-build. |
+| User refuses connectors due to compliance | Skip Step 4 entirely. Ensure 5.8 (privacy rules) runs. |
+| User on regulated industry (law, healthcare, finance, gov, etc.) | Auto-set `compliance_constraints`. Default all connectors OFF. Write `.claude/rules/privacy.md`. Pull metadata-only if any cloud tool gets connected. |
+| User wants to stop mid-flow | Save partial state to `personality.md` with `setup_status: incomplete`. Resume next session. |
+| Vague discovery answers | Use sensible default with the user's first-mentioned vocabulary. Never invent terms. |
+| `is_developer` mis-set on third-party mention ("we have devs") | Strict definition: only true on self-reference ("I code", "my repos"). Correct quietly if wrong. |
+| `is_developer=true` but no repos | Skip Step 6.2. Tell user they can run "register this repo" later. |
+| Vault creation fails (disk, permissions) | Try `~/Documents/`, then `~/Desktop/`. If both fail, surface system error and stop. |
+| Pulled data enormous | Cap at 24h. Cap to metadata-only if `compliance_constraints` non-empty. |
+| User has 3+ tools they want connected | Hard cap at 2 in Step 4. Queue rest for `/cortex-connect-tools` follow-up. |
+| Screen-reader user | Replace "watch your vault" with file-by-file narration. Skip monospace YAML/path echoes. Offer "vault folder + your usual editor" instead of Obsidian. |
+| Operational/queue archetype (>20 active items, no portfolio shape) | Do NOT scaffold one folder per item. Use single `<bucket_term>/` folder with `Active.md` log + template for new entries. |
+| ESL user / locale mismatch | Avoid idioms ("falling through the cracks", "imagine the things"). Substitute literal phrasing. Honor any non-English vocabulary the user introduces. |
 
 ## What this skill does NOT do
 
