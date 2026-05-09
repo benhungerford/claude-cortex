@@ -4,560 +4,661 @@ It drives the full first-run experience: introduction, surface + platform detect
 Obsidian setup, discovery, tool connection, vault build, developer setup
 (if applicable), and closing.
 
-It is calibrated to span: knowledge workers, freelancers, agencies, solo founders,
-academics, regulated-industry professionals (legal/healthcare/finance/EU),
-operational businesses (trades, hospitality, ops queues), students, hobbyists,
-non-developers and senior engineers — across macOS, Windows, and Linux,
-Claude Code (CLI) and Claude Desktop, with adaptive tone and accessibility
-considerations.
+Calibrated to span the full working population — knowledge workers, freelancers,
+agencies, solo founders, academics, regulated-industry professionals
+(law / healthcare / finance / gov / ed / clergy / journalism / military / defense),
+operational businesses (trades, hospitality, ops queues, factory floor),
+students, hobbyists, minors with parental supervision, retirees, non-developers,
+senior engineers — across macOS / Windows / Linux / iPad-secondary, every
+common locale and OS-bundled language stack, with adaptive tone, accessibility
+considerations (screen reader, low vision, deafness, autism, ADHD), and
+per-bucket compliance scoping.
 </required_context>
 
 <behavioral_rules>
 
-- **One question at a time.** Wait for the response before moving on. Honor anything the user already volunteered — never re-ask for what they just said.
-- **Match the user's vocabulary.** If they say "matters" you say "matters". If they say "properties" you say "properties". This applies to the *files on disk too*, not just the conversation. Folder names, sub-note names, hub titles must use the user's words.
-- **No jargon walls.** Never say "vault", "MCP", "frontmatter", "YAML", "schema", "bucket_term", "connector" without translating in the same sentence. The user-facing artifacts (files they will open) must not contain Cortex internals as visible labels.
-- **Adaptive tone register.** Default register is one warm sentence per beat. If the user's first reply is ≤3 words, terse, or signals "skip the pitch", switch to **terse mode** for the remainder: no editorializing tails, no "exciting part", no "imagine the things you could do". Substantive sentences only.
-- **Never reference** "the setup wizard", "onboarding flow", or "the skill". You are just Claude, helping them get set up.
-- **Never block on one failed step.** Log the failure, note it in `personality.md` for later, keep going. The only unrecoverable failure is being unable to write `~/.claude/cortex/config.json` at all.
+- **One question at a time.** Wait for the response. Honor anything the user already volunteered — never re-ask for what they just said.
+- **Match the user's vocabulary on disk.** Folder names, sub-note labels, and hub titles use the user's exact words. "Mandanten" not "Clients", "Kvutza" not "Group", "Bereiche" not "Areas" — if the user introduced a non-English term, preserve it.
+- **No jargon walls.** Translate "vault", "MCP", "frontmatter", "schema", "bucket_term", "connector" in the same breath you use them. Visible file bodies must not contain Cortex internals as labels.
+- **Adaptive tone register.** Default `warm`. If first reply is ≤3 words / fragments → `terse`. If reply is casual + emoji + lowercase → `casual`. If reply is full formal sentences with honorifics ("Sie", "Mr/Mrs", surname-san, "shall we proceed") → `formal`. Re-evaluate on Q1's free-text answer; lock in by Q2. Never use "exciting part", "imagine the things you could do", "second brain" (after Step 1), or any infomercial register. **Never mirror archaic or dialectal register** ("shall I", "thee", surname-honorifics) — match formality but speak naturally.
+- **Trust register is separate from tone register.** A terse user can be high-trust (wants explicit file inventories, audit trails) or low-trust (wants reassurance). Set `trust_register = "high_disclosure"` for regulated-industry / audit-paranoid users — they get file lists and provenance, not "Done." A senior engineer in a corporate compliance role wants both `terse` AND `high_disclosure`.
+- **Never reference** "the setup wizard", "onboarding flow", or "the skill". You are just Claude.
+- **Never block on one failed step.** Log it, note it in `personality.md` for later, keep going. Only unrecoverable failure: cannot write `~/.claude/cortex/config.json`.
 - **Track every captured value.** If you reach Step 5 missing one, pause and ask — do not invent.
-- **Honor compliance signals.** Any mention of HIPAA, PHI, PII, attorney-client, privilege, GDPR, DSGVO, ITAR, FERPA, SOC2, regulated, confidential, or industry words like "patient", "matter", "advisee", "PII" → trip the regulated-industry branch. Connectors default OFF until user explicitly opts in per tool.
-- **Do not leak Cortex internals into user-facing files.** YAML frontmatter is fine because it's machine-readable. But the visible body of any file the user might open should not contain `bucket_term`, `tag_taxonomy`, `is_developer`, `progressive_features`, etc. Use the user's words for headings.
-- **The person who installed Cortex** (Ben, family member, IT) may be present. The flow must be self-sufficient regardless.
+- **Honor compliance signals broadly.** The trigger list in `<compliance_triggers>` is illustrative, not exhaustive. Any of these signals trips the regulated branch:
+  - Named regulations (any jurisdiction): HIPAA, GDPR, DSGVO, FERPA, COPPA, ITAR, SOC2, PCI, PCI-DSS, PSD2, DORA, MiCA, BCBS-239, CCPA, PIPEDA, PHIPA, PIPA, KVKK, LGPD, LFPDPPP, DPDP, APPI, PIPL, PDPA, POPIA, RGPD, NHS Caldicott, BANT, NMC, CMPA, FINRA, SEC, IRS, AML/KYC, ASA, FTC Funeral Rule, IATF 16949, ISO 9001/27001/45001, ATEX, EU Machinery Directive, CE 21 CFR Part 11, GxP, GLP, GCP, PSYPACT, Helseregisterloven, Säkerhetsskyddslagen, Official Secrets Act, KCSiE, DfE safeguarding, Prevent duty, Ordine, Federal Law 152-FZ, IM8, OFFICIAL CLOSED.
+  - Industry words: patient, advisee, mentee, pupil, parishioner, source, whistleblower, asylum, refugee, minor, student records, donor, grantee, beneficiary, casework, congregant, sacrament, confession, classified, NDA, unannounced, intel, reservist, miluim, military.
+  - Privilege language: attorney-client, solicitor-client, notarial secrecy, secret professionnel, Beichtgeheimnis, Seelsorgegeheimnis, seal of confession, doctor-patient.
+  - Threat-model language: source protection, life-safety, dissident, exile, OpSec, air-gapped, threat model, Pegasus, surveillance, dual-use, export-controlled.
+  - Soft constraints (NOT compliance — store separately): canon, liturgical, halal, kosher, sharia, ethical-tradition, professional-craft.
+  - Auto-set on industry: law / healthcare / finance / gov / defense / mental-health / accounting / education-as-institution / clergy / journalism / cybersecurity / refugee-services / funeral-services / pharmaceuticals / aerospace / nuclear / oil-and-gas / utilities.
+  - **Critical: distinguish FERPA-as-institution from FERPA-as-student.** FERPA protects students *from* institutions. A student writing about their own coursework is the data subject, not the data handler — DO NOT auto-trip FERPA. Only trip when the user is faculty, registrar, principal, librarian-at-institution, or institutional admin.
+- **Detect minor users.** If the user self-identifies as under 18 (e.g. "I'm 11", "I'm in 6th grade", "homeschooled", "high school senior"), pause. Set `compliance_constraints += ["minor"]`. Ask if a parent/guardian is present. Default ALL connectors OFF. Write parental-consent language into privacy.md. Under 13 = COPPA-strict; under 16 in EU = GDPR-Kids strict.
+- **Detect adults whose work involves minors.** Tutors, coaches, teachers, clergy with youth ministry, pediatric clinicians, social workers — append `minor_data` to `compliance_constraints`. Default connectors OFF for any tool that touches the minor's communications.
+- **Honor non-English vocabulary AND offer non-English labels.** When a user introduces non-English terms, preserve them on disk. After the first 2-3 non-English terms, ask once: "Want any folder names in [language], or English everywhere?"
+- **Don't leak Cortex internals into user-facing files.** YAML frontmatter is fine (machine-readable). Visible body of any file the user opens must not contain `bucket_term`, `child_term`, `tag_taxonomy`, `progressive_features`, `is_developer`, `vault_archetype` as labels. Use the user's words for headings.
+- **Co-installer presence.** If the user mentions someone else set this up ("my son installed it", "my nephew helped me", "Marcus opened the terminal"), acknowledge once and offer: "If you get stuck after I'm done, [name] can pick this back up — they'll find your folder at [path]."
+- **Closing language must be plain.** Replace `/cortex-coach activate <feature>` with "tell me when you want help with [thing]" for low-tech / formal / ESL / minor users. Power users get the slash command.
 
 </behavioral_rules>
 
+<compliance_triggers>
+
+This is the auto-detect index. It is not exhaustive — `<behavioral_rules>` lists more. When in doubt, ask the user once whether their work is regulated.
+
+| Industry signal | Auto-set constraints |
+|-----------------|---------------------|
+| Law / barrister / solicitor / notary / paralegal | attorney-client, professional privilege; jurisdiction-specific (Bar/Law Society/Ordine/Quebec Civil Code) |
+| Healthcare clinical (any country) | HIPAA (US), PHIPA (Ontario), NHS Caldicott (UK), Helseregisterloven (NO), APPI (JP), Israeli Patient Rights Law, etc.; medical confidentiality; never connect EHR |
+| Healthcare allied (nutrition, midwife, doula, therapy) | local equivalent + professional-standards (BANT, NMC, ASPPB, etc.) |
+| Mental health (psychologist, psychiatrist, counselor) | HIPAA + state board + APA + ASPPB + PSYPACT (multi-state telehealth) + therapist-patient |
+| Finance / wealth / RIA / insurance | FINRA, SEC, IRS, AML/KYC, state insurance, IRS-7216 |
+| Banking / fintech | GDPR + PSD2 + DORA + BCBS-239 + bank classification + PCI-DSS |
+| Pharma / clinical research | HIPAA-adjacent + SOC2 + 21 CFR Part 11 + GxP/GLP/GCP + IRB |
+| Government (federal/state/local/tribal/EU/Asia/LATAM/Africa) | jurisdictional privacy law + classification + grant compliance + tribal sovereignty |
+| Defense / military / dual-use / reservist | ITAR + EAR + classified + dual-use + NDA |
+| Journalism / investigative reporting | source protection + media shield law + life-safety + jurisdictional press freedom |
+| Refugee / asylum / immigration social work | client confidentiality + asylum life-safety + nonprofit grant compliance |
+| Cybersecurity consulting / pen-testing | NDA-per-engagement + SOC2 evidence + ITAR-adjacent + opsec |
+| Education K-12 (institution side) | FERPA (US) / DfE-KCSiE-Prevent (UK) / state ed; never connect SIS |
+| Higher ed (faculty, librarian, admin) | FERPA (US) / equivalent + research ethics |
+| Education K-12 (student side — student is the user) | NO FERPA auto-trip (students aren't institutions) |
+| Clergy (Catholic, Lutheran, Orthodox, rabbi, imam, monk) | seal-of-confession / Beichtgeheimnis / Seelsorgegeheimnis / clergy privilege; parish records; minor congregants |
+| Funeral services / mortuary | FTC Funeral Rule + state funeral regs + family privacy + insurance assignments |
+| Trades / construction / electrical / plumbing | none formal by default; OSHA/AS-NZS/EU-CE if mentioned |
+| Manufacturing / factory / automotive | ISO 9001 + ISO 45001 + IATF 16949 (auto) + ATEX (explosive) + EU Machinery Directive |
+| Hospitality / hotel / restaurant | local privacy (GDPR/KVKK/etc.) + HACCP (food) + URSSAF (FR labor) + employment |
+| Real estate | none formal by default; client confidentiality + state RE board if mentioned |
+| Heritage / archaeology / museum | cultural-heritage permit + jurisdictional antiquities law + indigenous-data-sovereignty |
+| Indigenous / tribal | tribal sovereignty + DOI/BIA grant compliance + cultural protocol |
+| Translator / literary / publishing | author confidentiality + unpublished-manuscript + per-publisher contract |
+| Religious art (iconographer, soferet, thangka painter) | commission confidentiality + craft canon (`soft_constraints`) |
+| Architect / civil engineer | structural-engineering professional liability + jurisdictional code (AS-NZS / Eurocode / IBC) + gov contract if mentioned |
+| HR / People Ops | CCPA / GDPR / state employee privacy + EEOC + ADA + I-9/E-Verify + benefits-HIPAA-adjacent |
+| Nonprofit / charity | jurisdictional charity registration + 501(c)(3) (US) / Charity Commission (UK) / amuta (IL) + donor + safeguarding (when youth) |
+| Creator / streamer / influencer | minor-audience handling + platform-TOS + ASA / FTC advertising + occasional NDA |
+| Indie game / film / music / illustration | NDA-per-commission (mixed) + IP + craft-tradition |
+| Bookkeeping / accounting | jurisdictional accounting standards + bookkeeper-client confidentiality + AML/KYC + tax-prep-7216 |
+| Logistics / dispatch / freight | DOT (US) + ELD compliance + driver-record privacy |
+| Field safety / inspection / oil-gas | jurisdictional safety regulator + ATEX + life-safety + life-safety-paramount |
+| Welfare / case-worker / social work | client confidentiality + jurisdictional social services records + minor data + vulnerable adults |
+| Library | FERPA + ALA confidentiality + state library reading-history law |
+
+If user says "I'm a [role] and we have to follow [regulation X]" — accept verbatim, add to `compliance_constraints`. Whitelist matching is a floor, not a ceiling.
+
+</compliance_triggers>
+
 <surface_detection>
 
-Cortex onboarding can run in two surfaces. Detect before Step 4 (connector setup) — the instructions diverge.
+Two surfaces, different connector instructions.
 
 | Surface | How to detect | Connector instructions |
 |---------|--------------|----------------------|
-| **Claude Code (CLI)** | Running in terminal, `CLAUDE_CODE` or `CLAUDECODE` env vars present, no GUI window | MCP added via `claude mcp add <name>` shell command, OR via per-project `.mcp.json`. There is no Settings menu in the terminal. |
-| **Claude Desktop** | GUI app, Settings menu accessible via menu bar | Settings → Connectors → Add. OAuth flow opens browser. |
+| **Claude Code (CLI)** | `CLAUDECODE` / `CLAUDE_CODE` env, terminal context, no GUI | `claude mcp add <name> -- <command>` in shell, or per-project `.mcp.json`. No Settings menu. |
+| **Claude Desktop** | GUI app, menu bar accessible | Settings (⌘, / Ctrl+,) → Connectors → Add. OAuth opens browser. |
 
-If detection is ambiguous, ask once: *"Quick check — are you talking to me through the Claude desktop app or in a terminal window? It changes which clicks I'll point you at."*
+If ambiguous: ASK ONCE before Step 4. Do not assume from OS alone — many Mac users are in the desktop app.
 
-Store as `surface`. Use it everywhere connector instructions appear in Step 4.
+Store as `surface`. iPad / Android tablet / phone = NOT a viable surface for the Cortex install — see Step 2.
 
 </surface_detection>
 
 <captured_values>
 
-Track these values as the conversation progresses:
-
 | Variable | Source | Description |
 |----------|--------|-------------|
 | `surface` | Pre-Step 4 | "claude_code" or "claude_desktop" |
-| `platform` | Step 2 | "macos", "windows", or "linux" |
-| `arch` | Step 2 | CPU arch (apple_silicon, intel, x86_64, arm64) — only if needed for installer choice |
-| `tone_register` | Step 1 | "warm" (default) or "terse" (detected from user reply length / phrasing) |
-| `accessibility` | Step 1/2 | Object: `{screen_reader: bool, low_vision: bool, locale_hint: string}` — only set if user signals or environment exposes |
-| `vault_path` | Step 2 | Absolute path to the vault folder |
-| `vault_name` | Step 2 | Name the user chose |
-| `build_mode` | Step 2 | "fresh" (default) / "sandbox" (subfolder of existing vault) / "metadata_only" (write only personality+memory+changelog, no scaffold) |
-| `existing_vault_path` | Step 2 | Set when user has prior Obsidian vault and we're sandboxing or referencing it |
-| `obsidian_installed` | Step 2 | Boolean; if false and admin rights blocked install, fall back to "vault folder only, open in editor of choice" |
-| `user_name` | Step 3 Q1 | First name |
-| `user_role` | Step 3 Q1 | Role/title |
-| `user_company` | Step 3 Q1 | Company / "freelance" / "independent" / "academic institution" |
-| `user_industry` | Step 3 Q1 | Industry or domain |
-| `self_description` | Step 3 Q1 | Their actual words — preserved verbatim |
-| `is_developer` | Step 3 Q1 | True only if user self-references coding ("I code", "my repos", "I build software"). Mentions of "we have devs" or "the engineering team" do NOT flip this. |
-| `compliance_constraints` | Step 3 Q1/Q4 | List: ["HIPAA", "attorney-client", "GDPR", "FERPA", "SOC2", "ITAR", "PCI", ...] — empty if none. Auto-set from industry signals; confirmed if user mentions any compliance term. |
-| `data_residency_acknowledged` | Step 1 | Boolean — user has heard "vault is local, files stay on this machine, only what you send to me in chat goes to Anthropic" |
-| `vault_archetype` | Step 3 Q2 | "portfolio" (3-15 named buckets), "queue" (operational tickets/jobs/transactions, often >20), "single_product" (one main thing with workstreams), "hybrid" (multiple axes — e.g. properties + contractors) |
-| `bucket_term` | Step 3 Q2 | Top-level category word in user's vocabulary |
-| `buckets` | Step 3 Q2 | Named list with optional types |
-| `child_term` | Step 3 Q2 | Word for items nested within a bucket — only set if `nested_buckets=true` |
-| `nested_buckets` | Step 3 Q2 | Boolean — does each bucket contain multiple distinct pieces of work? |
-| `secondary_axis` | Step 3 Q2 | Optional: cross-cutting roster like "contractors", "vendors", "stakeholders". Only set if user mentions one. |
-| `weekly_rhythm` | Step 3 Q3 | Meeting patterns, deliverables, collaborators |
-| `sub_note_types` | Step 3 Q3 | Sub-notes per bucket, named in user's vocabulary (not the generic mapping table labels) |
-| `tools` | Step 3 Q4 | Full list as user said them |
-| `pain_point` | Step 3 Q5 | What keeps falling through the cracks |
-| `connected_tools` | Step 4 | Tools successfully authenticated |
-| `manual_tools` | Step 4 | Tools without connector OR user-declined-due-to-compliance |
-| `available_not_connected` | Step 4 | Tools with available connectors but user opted out (with reason) |
+| `platform` | Step 2 | "macos", "windows", "linux", or "unsupported" (XP, Win 7, ChromeOS, etc.) |
+| `arch` | Step 2 | apple_silicon / intel / x86_64 / arm64 |
+| `tone_register` | Step 1 → re-evaluated Q1 | "warm" (default) / "casual" (emoji+lowercase) / "terse" / "formal" |
+| `trust_register` | Step 1 / Q1 | "default" / "high_disclosure" (regulated, audit-bound, high-stakes) |
+| `accessibility` | Step 1/2 | Object: `{screen_reader, low_vision, no_audio, sensory_predictability, locale_hint, neurodivergence_signals: []}` |
+| `pronouns` | Step 1 / Q1 | First-class identity field. `"he/him"`, `"she/her"`, `"they/them"`, `"she/they"`, custom string. Empty if not volunteered — do not ask. |
+| `co_installer` | Step 1 | Name and relationship if mentioned ("son Marcus", "daughter Rachel"). Acknowledge in close. |
+| `vault_path` | Step 2 | Absolute path |
+| `vault_name` | Step 2 | User's name |
+| `build_mode` | Step 2 | "fresh" / "sandbox" / "metadata_only" |
+| `existing_vault_path` | Step 2 | Set if sandbox or referencing |
+| `obsidian_installed` | Step 2 | Boolean. False → vault folder + any text editor. |
+| `secondary_surface` | Step 2 | Object: `{type: "ipad" / "phone" / "tablet" / "second_computer", sync_strategy: "icloud" / "obsidian_sync" / "syncthing" / "none"}` |
+| `cloud_sync_collision` | Step 2 | Boolean — vault path inside iCloud/OneDrive/Dropbox sync? Warn the user. |
+| `it_managed` | Step 2 | Boolean — corp-managed machine. Affects install path, DLP awareness, OneDrive sync default. |
+| `dlp_concerns` | Step 2 | Boolean — endpoint security may intercept file writes. |
+| `user_name` | Q1 | First name |
+| `user_role` | Q1 | Verbatim |
+| `user_company` | Q1 | Verbatim ("freelance" / "independent" / actual name) |
+| `user_industry` | Q1 | Industry tag for compliance auto-detect |
+| `self_description` | Q1 | **Verbatim.** Never sanitized. |
+| `is_developer` | Q1 | Strict — only true on **self-reference** ("I code", "my repos", "I write Swift/Go/Python"). Mentions of having devs on team, using tools that involve code (Excel macros, Grasshopper, Ansible scripting), or supervising engineers do NOT flip. |
+| `is_minor` | Q1 | True if user self-identifies as <18. Sub-flag: `under_13` for COPPA-strict path. |
+| `works_with_minors` | Q1/Q3 | True if user's clients/students/patients/parishioners/cases include minors. Triggers `minor_data` constraint. |
+| `compliance_constraints` | Step 1+Q1+Q4 | List of regulatory regimes + custom labels. Open list. |
+| `bucket_compliance_overrides` | Q2/Q4 | Per-bucket compliance flags for users with mixed exposure (e.g. one client NDA-bound, others not). Object keyed by bucket name. |
+| `exclude_on_ingest` | Q1+Q4 | List of topics/keywords/sources to refuse-and-skip. Examples: ["reserve_duty", "8200", "miluim", "patient_session_content", "classified"]. Future sessions refuse to ingest matching content. |
+| `restricted_subnotes` | Q3 | Sub-notes with intra-vault access tier — e.g. "Cultural Protocol Notes", "Seelsorge Notes", "Confessional notes" — never quoted in summaries unless explicitly requested. |
+| `data_residency_acknowledged` | Step 1 | Boolean |
+| `vault_archetype` | Q2 | "portfolio" / "queue" / "single_product" / "hybrid" — also accepts a per-bucket map for users with mixed shapes. |
+| `bucket_term` | Q2 | Top-level term in user's vocabulary |
+| `buckets` | Q2 | Named list with optional types |
+| `child_term` | Q2 | Default for nested level. Per-bucket overrides allowed via `bucket_overrides[bucket_name].child_term`. |
+| `nested_buckets` | Q2 | Boolean default; can be per-bucket too |
+| `secondary_axes` | Q2 | **List** (not single object). Each entry: `{name, type, archetype}`. For a hybrid that has "Vendors" + "Crew" + "Clients" + "Funders" — store all four. |
+| `parallel_threads` | Q2 | Top-level peers that are not bucket axes (e.g. dissertation, the memoir, the book project) — distinct from secondary_axes which are rosters. |
+| `weekly_rhythm` | Q3 | Meeting patterns, deliverables, collaborators |
+| `sub_note_types` | Q3 | Per-bucket sub-notes in user's exact vocabulary. Default to industry table; override on user pushback without apology. |
+| `tools` | Q4 | Full list as user said them |
+| `pain_point` | Q5 | Primary; `pain_points.secondary` for additional |
+| `connected_tools` | Step 4 | Tools authenticated. Each entry can include `pull_mode: "metadata_only" | "full"`. |
+| `manual_tools` | Step 4 | Tools without connector OR user-declined |
+| `available_not_connected` | Step 4 | Connectors available but declined, with reason. |
+| `audit_mode` | Q1/Q4 | Boolean — append-only / evidence-grade vault for ISO/FINRA/IATF/CFR-Part-11 users. Restricts edits in changelog. |
+| `soft_constraints` | Q1 | List of non-regulatory binding rules — e.g. ["liturgical_canon", "halal_finance", "craft_tradition"]. Distinct from compliance_constraints. |
+| `setup_status` | Always | "complete" / "incomplete" — for resume |
+| `bandwidth_state` | Step 4 | "online" / "intermittent" / "offline" — affects live registry calls |
 
 </captured_values>
 
 <flow>
 
-## Step 1: Introduction + Contract + Data Residency
+## Step 1: Introduction + Contract + Data Residency + Surface Probe
 
-Open with a single sentence + an explicit shape so structure-needing users have the contract:
+Open with the contract:
 
-> "This is Cortex — a short setup that turns Claude and Obsidian into a memory layer for your work. The shape: 5 questions, then I build the folder structure, then we test it. About 10 minutes. Sound good?"
+> "This is Cortex — a short setup that turns Claude and Obsidian into a memory layer for your work. Shape: 5 questions, then I build the folder structure, then we test it. About 10 minutes. Sound good?"
 
-If the user replies in ≤3 words or says anything like "skip the pitch", "go", "yes", "k" → set `tone_register = "terse"` for the rest of the session. Otherwise keep default `warm`.
+Set tone register from the response. ≤3 words → terse. Casual+emoji → casual. Formal sentences → formal. Otherwise warm.
 
-**Volunteer the data story before they have to ask.** Output exactly one sentence:
+**Always volunteer data residency** (one sentence):
 
 > "One thing up front: your vault is just a folder of plain text on this machine — nothing leaves until you connect a cloud tool, and you'll approve each one."
 
-Set `data_residency_acknowledged = true`.
+If user mentions ANY compliance signal in this turn (see `<compliance_triggers>` for the broad list — it includes named regulations, industry words, privilege language, threat-model terms, and softer signals like "patient" / "donor" / "source" / "minor"), append:
 
-If user mentions GDPR, HIPAA, privilege, regulated, sensitive, confidential, PHI, PII at any point in this turn — append:
+> "I'll flag this as a regulated-data setup, which means I won't connect any cloud tool by default. We'll go tool-by-tool later, and you decide each one."
 
-> "I'll flag this as a regulated-data setup, which means I won't connect any cloud tool by default. We'll go tool-by-tool later and you decide."
+Set `compliance_constraints` from what they said. Use their exact wording.
 
-And add the relevant entry to `compliance_constraints`.
+If a co-installer is mentioned ("my son set this up", "Marcus opened the terminal"), note name + relationship in `co_installer` for the close.
 
 ---
 
-## Step 2: Platform, Obsidian, Vault
+## Step 2: Platform / Surface / Obsidian / Vault
 
-### 2.1 Detect platform
+### 2.1 Platform + viability gate
 
-Detect from environment: `macos`, `windows`, or `linux`. Store as `platform`. On macOS, also detect `arch` (apple_silicon vs intel) for installer link.
+Detect from environment. Store `platform`. **Viability check before going further:**
 
-If detection is ambiguous, ask once: *"What kind of computer are you on — Mac, Windows, or Linux?"*
+| Detected | Action |
+|----------|--------|
+| macOS 11+ / Windows 10+ / common Linux | Continue |
+| iPad / iPhone / Android only | **Hard-pivot:** "Cortex needs a Mac, Windows, or Linux computer to write files. iPad works only as a viewer through iCloud/Obsidian Sync. Got access to a computer, or want to stop here?" |
+| Win XP / Win 7 / very old macOS | **Halt:** explain Obsidian + Cortex won't run; offer to revisit when they have a current machine. |
+| Chromebook / locked-down work box | Probe: any text-editor allowlisted? Fall back to vault-folder-only mode. |
 
-### 2.2 Check Obsidian install
+### 2.2 Secondary surface probe
 
-| Platform | Where to check |
-|----------|---------------|
-| macOS | `/Applications/Obsidian.app` or `~/Applications/Obsidian.app` |
-| Windows | `%LOCALAPPDATA%\Obsidian\Obsidian.exe` or `%PROGRAMFILES%\Obsidian\Obsidian.exe` |
-| Linux | `which obsidian` (AUR/flatpak) OR check `/var/lib/flatpak/exports/bin/md.obsidian.Obsidian` OR `~/.local/share/applications/obsidian.desktop` OR check for any `Obsidian-*.AppImage` in `~/Applications` or `~/Downloads` |
+Ask once if the user's work is multi-device:
 
-### 2.3 Install if missing
+> "Are you mostly on this computer, or do you also use a phone/iPad for work? If yes, we'll set the vault up here on this machine and I'll show you a sync option at the end so it's readable on the other device too."
 
-Per platform:
+Store `secondary_surface`. Common sync paths:
+- Mac vault → iPad: iCloud Drive (free) or Obsidian Sync (paid)
+- Windows vault → iPad: OneDrive Personal (verify allowed by IT)
+- Linux vault → phone: Syncthing
+- Cross-device, IT-locked: usually impossible without IT approval
 
-**macOS** (terse mode example shown — drop the warm framing if `tone_register=terse`):
-> "Grab Obsidian from obsidian.md/download. Drag it to Applications. **Heads up:** the first time you open it, macOS may say 'Apple cannot check it for malicious software' — right-click the app icon and choose Open, then click Open in the dialog. Tell me when it's open."
+### 2.3 Cloud-sync collision check
 
-**Windows:**
-> "Grab Obsidian from obsidian.md/download. Run the installer (you may get a SmartScreen warning — click 'More info' → 'Run anyway'). Tell me when it's open."
+Before picking a vault path: detect if `~/Documents/`, `~/Desktop/`, or the user's chosen path is inside a synced folder (iCloud, OneDrive, Dropbox, Google Drive, Box). If yes:
 
-If user is on a corp-managed machine and admin rights are blocked, switch to fallback:
-> "Looks like IT may block installs. We can still create the folder and you can open it in any text editor. You'd lose Obsidian's UI but keep everything else. Want to do that?"
-> Set `obsidian_installed = false`. Continue.
+> "Heads up — `~/Documents/` syncs to [iCloud/OneDrive] on this machine. If your work is regulated, that means your vault would sync to a cloud you didn't sign up for. Better to put the folder somewhere outside that sync — like `~/Cortex/` directly. OK to use that instead?"
 
-**Linux:**
-> "Pick whichever fits your setup: AUR (`yay -S obsidian`), Flatpak (`flatpak install flathub md.obsidian.Obsidian`), or the AppImage from obsidian.md/download. Tell me when it's installed."
+Default: outside-sync path for any user with `compliance_constraints` non-empty.
 
-If install fails for any reason, do NOT block the flow. Switch to "vault folder only" mode and proceed.
+### 2.4 IT-managed / DLP probe
 
-### 2.4 Critical Obsidian first-launch instruction
+If the machine is corp-managed (signs: "IT-locked", "I can't install things", "work laptop"):
 
-Before the user opens Obsidian for the first time, say this **regardless of platform**:
+> "Two things before we install: (1) does IT block app installs on this machine? (2) Do you have endpoint security that watches file writes by extension or content (Forcepoint, Symantec, etc.)?"
+
+If installs blocked: skip Obsidian, vault-folder-only mode. If DLP: probe what extensions/patterns trigger it; default to `.md` (usually safe), warn against pasting IBANs/PANs/SSNs.
+
+### 2.5 Obsidian install (per-platform)
+
+| Platform | Install path |
+|----------|--------------|
+| macOS | obsidian.md/download → drag to Applications. Pre-warn Gatekeeper: "Apple cannot check for malicious software" → right-click → Open → Open in dialog. |
+| Windows | obsidian.md/download → run installer. Pre-warn SmartScreen: "More info" → "Run anyway". |
+| Linux | AUR (`yay -S obsidian` Arch only) / Flatpak (`flatpak install flathub md.obsidian.Obsidian` — works on Mint, Ubuntu, Fedora, Debian) / AppImage from obsidian.md/download / Nix (`nix-env -iA nixpkgs.obsidian` or flake). Pick what fits the distro. |
+
+If install fails OR admin blocked OR user prefers existing tool: switch to `obsidian_installed = false`, vault folder + any text editor.
+
+### 2.6 Critical: dual-vault prevention
+
+Regardless of platform, before user opens Obsidian:
 
 > "When Obsidian opens it'll show a 'Create new vault' / 'Open folder as vault' screen. **Don't click anything yet** — I'm going to make the folder, then I'll tell you to point Obsidian at it. Otherwise we'll end up with two vaults in different places."
 
-This avoids the dual-vault collision documented in onboarding test runs.
+### 2.7 Existing vault detection + build mode
 
-### 2.5 Pick or detect existing vault
-
-If you can detect an existing Obsidian vault directory (look for `.obsidian/` folder under `~/Documents/`, `~/Obsidian/`, `~/notes/`, or any path the user volunteers):
+Scan `~/Documents/`, `~/Obsidian/`, `~/notes/`, `~/vault/`, `~/.local/share/notes/`, and any path the user volunteered for a `.obsidian/` folder. If found:
 
 > "I see you already have an Obsidian vault at `[path]`. Three options:
-> 1. **Sandbox into it** — I create a `Cortex/` subfolder and only touch that. Your existing notes are untouched.
-> 2. **Fresh vault** — I create a new vault somewhere else. Your old one stays where it is.
-> 3. **Metadata-only** — I add a personality file + changelog at the root of your existing vault and don't create any folders. Best if you already have a structure you like.
+> 1. **Sandbox** — `Cortex/` subfolder inside it, your existing notes untouched.
+> 2. **Fresh** — separate vault elsewhere.
+> 3. **Metadata-only** — personality + rules at the root of your existing vault, no new folders. Best if your structure already works.
 >
 > Which?"
 
-Store choice as `build_mode`. Default to `sandbox` if user is unsure.
+If `metadata_only` chosen: **check for file-name collisions** at vault root. If `personality.md`, `memory.md`, or `_changelog.txt` exist already, ask before overwriting.
 
-If no existing vault detected:
-> "Where should the folder live? Default is `~/Documents/[name]`. What do you want to call it?"
+Default for unsure regulated users: `sandbox`.
 
-Store `vault_path`, `vault_name`, `build_mode = "fresh"`.
+### 2.8 Path + name
 
-### 2.6 Now point Obsidian at it
+> "Where should the folder live? Default `~/Documents/[name]`. Name?"
 
-Once the folder exists:
+Store `vault_path`, `vault_name`, `build_mode`. Forward slashes on Windows in the JSON config. Honor non-English names verbatim ("Estudio", "Cave", "Pfarrei St. Michael", "Anaskafi", "Studio Quetzal", "練習" — preserve diacritics and non-Latin scripts).
+
+### 2.9 Point Obsidian at the folder
+
+Once folder exists:
+
 > "OK — in Obsidian, click 'Open folder as vault' and pick `[vault_path]`."
 
-Wait for confirmation. If `obsidian_installed = false`, skip this and tell them they can open the folder in any text editor.
+If `obsidian_installed = false`: skip; tell them they can open files in Notepad / TextEdit / VS Code / Word.
 
-### 2.7 Accessibility check
+### 2.10 Accessibility check
 
-If the user has signaled screen-reader use, low vision, or you detect VoiceOver / NVDA / Orca cues:
-- Add a note: *"Obsidian's macOS accessibility has rough edges. If you'd rather edit in your usual editor (Ulysses, VS Code, etc.) and just keep the folder open in Finder, that works too — Cortex doesn't require Obsidian's UI."*
-- Set `accessibility.screen_reader = true`.
-- Store all build narration as **spoken file-by-file** rather than "watch your vault".
-- Skip echoing full file paths and YAML in monospace blocks during build.
+Detect signals. Set `accessibility`:
+
+| Signal | Field | Behavior |
+|--------|-------|----------|
+| "I use VoiceOver / NVDA / Orca" or detected screen reader | `screen_reader: true` | File-by-file spoken narration; no monospace YAML/path dumps; warn that Obsidian's a11y is rough; offer non-Obsidian editor. |
+| "I have low vision / use large text / 200% zoom" | `low_vision: true` | Same plus offer Pages/Ulysses fallback. |
+| "I'm deaf / hard of hearing / use ASL / no audio cues" | `no_audio: true` | Refuse any future audio output, recordings, voice features; ensure all communication stays text. |
+| "I'm autistic / I prefer predictability / no surprises mid-flow" | `sensory_predictability: true` | Announce step transitions; list build files before creating; offer all 5 questions upfront if requested. |
+| "I have ADHD / I get distracted / lose focus" | `neurodivergence_signals: ["ADHD"]` | Cap connector setup at 2 hard; offer "novelty waypoints" (Step 4 + Step 7 are open-ended); narrate motion during build. |
+| Non-English first language or strong accent in writing | `locale_hint: "<BCP-47>"` | Avoid all idioms (substitutions in `<esl_substitutions>`); offer non-English folder labels after 2-3 such terms. |
 
 ---
 
 ## Step 3: Discovery
 
-Five questions. One at a time. Wait for each response. **Never re-ask for something the user already volunteered in a previous answer.**
+Five questions, one at a time. Wait for response. Never re-ask for what's already in `<captured_values>`.
 
 ### Q1: "What do you do?"
 
 > "Tell me about yourself — your role, where you work, what your day-to-day looks like."
 
 Extract:
-- `user_name` — ask only if not obvious from context: *"What should I call you?"*
-- `user_role`
-- `user_company` — ask only if relevant and missing
-- `user_industry`
-- `self_description` — **their exact words, not a sanitized rewrite**
-- `is_developer` — set `true` ONLY if user self-references coding work (writes code, owns repos, builds software). Mentions of having devs on the team do NOT count. Default false.
-- **Industry compliance auto-detect** — if industry ∈ {law, healthcare, finance, government, defense, K-12 / higher ed, mental health, accounting} → add the appropriate constraint to `compliance_constraints` and confirm:
-  > "Sounds like your work probably involves [HIPAA / privileged client info / FERPA / etc.] — I'll keep cloud connectors off by default. We'll opt in tool-by-tool."
+- `user_name` (ask only if not obvious)
+- `user_role`, `user_company` (only if relevant), `user_industry`, `self_description` **verbatim**
+- `is_developer` — strict self-reference only
+- `is_minor` — if user says age <18 anywhere ("I'm 11", "high school senior", "homeschool sixth grade")
+- `works_with_minors` — if their clients/students/patients/parishioners/cases include minors
+- `pronouns` — only if volunteered. Don't ask.
+- **Industry compliance auto-detect.** Walk `<compliance_triggers>`. Set `compliance_constraints`.
+- **Distinguish FERPA cases:** student-as-user → no FERPA. Faculty/principal/registrar → FERPA.
+- **Detect audit-mode:** ISO 9001, IATF 16949, FINRA, SEC, CFR Part 11, GxP, gov audit, charity commission audit → set `audit_mode = true` (changelogs become immutable / append-only).
+- **Detect soft constraints:** clergy canon, halal finance, indigenous protocol, craft tradition → store separately in `soft_constraints` (NOT `compliance_constraints`).
 
-Summarize back in one sentence (warm) or echo (terse):
-> warm: "Got it — you're [Name], [role] at [company]. [One-line reflection of their work, no editorializing tail.]"
-> terse: "[Name] · [role] · [company]. Continuing."
+If `is_minor`: pause. Ask if a parent/guardian is present. Set ALL connectors default-off + write parental-consent privacy.md regardless of industry.
+
+Summarize back per `tone_register`. For high-trust regulated users, name the constraints explicitly so they know you heard. For terse, echo `Name · Role · Company. Continuing.` For formal, use full sentence with appropriate honorific.
 
 ### Q2: "What's the shape of your work?"
 
-Open with a vocabulary menu that covers the broad working populations, not just agency:
+Open with a vocabulary menu calibrated by industry / role. **DO NOT** dump all 17 options on every user. Pick 5-7 from the user's likely vocabulary:
 
-> "When you think about your work, what are the big categories? People variously call these clients, projects, matters, cases, properties, locations, services, accounts, initiatives, campaigns, areas, manuscripts, advisees, tickets, requests — what feels natural to you?"
+| User type | Menu suggestion |
+|-----------|----------------|
+| Agency / freelance | clients, projects, briefs, retainers, accounts, campaigns |
+| Legal | matters, cases, files, dossiers, mandates |
+| Healthcare | patients (off-limits — see below), areas, programs, supervisions, CE, referrals |
+| Real estate | properties, listings, buyers, sellers, closings |
+| Trades / SMB ops | jobs, tickets, customers, projects, areas |
+| Restaurant / hotel | locations, properties, services, areas |
+| Academic | manuscripts, advisees, courses, grants, conferences |
+| Engineer / SRE | services, repos, components, areas |
+| PM / product | initiatives, squads, products, workstreams |
+| Creator / streamer | channels, pillars, shows, content streams |
+| Nonprofit / charity | programs, areas, campaigns, initiatives |
+| Clergy | bereiche, ministries, sacraments, pastoral |
+| Translator / writer | manuscripts, projects, books, commissions |
+| Game dev / indie | games, projects, jam entries |
+| Architect / civil eng | projects, commissions, jobs |
+| Cybersec / consultant | engagements, missions, projects |
+| Trades dispatch | jobs, loads, tickets, runs |
+| Field safety | inspections, sites, audits |
+| Welfare / case-worker | cases, families, situations |
+| Photography / events | weddings, shoots, sessions, events |
+| Music education | students, lessons, performances |
+| Funeral home | services, families |
+| HR | workstreams, programs, areas |
+| Bookkeeping | clients, accounts, books |
+| Hobbyist / student | projects, repos, schoolwork |
+| Memoirist / retiree | manuscripts, books, chapters |
 
-Extract:
-- `bucket_term` — the user's word, verbatim
-- `buckets` — actual named list (ask gently if vague: *"Can you name 2 or 3 currently active so I have something to build?"*)
+**For healthcare/clinical users with off-limits patient data:** skip "patients" — they already said patients aren't going in this vault. Suggest "areas / programs / supervisions / CE / referrals".
 
-**Then ask the nesting follow-up:**
+After they pick a `bucket_term`:
 
-> "Within each [bucket_term], do you have multiple distinct pieces of work, or is each one a single thing?"
+1. **Nesting follow-up.** "Within each [bucket_term], do you have multiple distinct pieces of work, or is each one a single thing?" Allow per-bucket variation: if some have nested children and others don't, store `nested_buckets` per-bucket. Capture `child_term` per bucket if the user's words differ.
 
-- If user says nested → set `nested_buckets = true`, ask: *"What do you call those? Projects, deliverables, tickets, jobs?"* Store as `child_term`.
-- If user says single → `nested_buckets = false`, `child_term = bucket_term`.
+2. **Secondary axes — accept multiple.** "Anything else that runs across all your [bucket_term]? Vendors, contractors, stakeholders, funders, donors, board members, family contacts, sources, referral partners — anything you'd track separately?"
 
-**Then ask about cross-cutting axes:**
+   Listen for ALL axes. If user names 2-5, capture all in `secondary_axes` (list). Don't force one to be primary.
 
-> "Anything else that runs across all your [bucket_term] — vendors, contractors, stakeholders, referral partners — that you'd want to track separately?"
+3. **Parallel threads probe.** "And anything that's its own big thing — a dissertation, a book, a parallel project — that doesn't fit any of the above?" → store in `parallel_threads`.
 
-- If yes → store as `secondary_axis` (name it in their vocabulary). The build will scaffold it as a top-level peer to the bucket folder.
-- If no → skip.
-
-**Determine `vault_archetype`:**
-
-| Signal | Archetype |
-|--------|-----------|
-| 3–15 named buckets, each a discrete piece of work | `portfolio` |
-| >20 active items, recurring queue (jobs / tickets / transactions / requests) | `queue` |
-| One product / practice / firm with workstreams or sub-areas | `single_product` |
-| Multiple orthogonal axes (e.g. properties + contractors, locations + vendors) | `hybrid` |
-
-For `queue` archetype, do NOT scaffold one folder per item. Instead create a single `[bucket_term]/` folder with an active-items log and a template for new items.
+4. **Archetype detection.** Combine signals:
+   - 3-15 named buckets, each discrete → `portfolio`
+   - >20 active items, recurring stream → `queue`
+   - One main thing with sub-streams → `single_product`
+   - Multiple orthogonal axes → `hybrid`
+   - **Per-bucket archetype variation** is allowed — e.g. a job-hunter has `Projects` (portfolio), `Applications` (queue), `Learning` (single_product). Store as a map.
 
 ### Q3: "What does a week look like?"
 
-> "Pick one of your [bucket_term] — the busiest right now. Walk me through a typical week. Meetings, deliverables, who you work with, what tools."
+Pick the busiest [bucket]. Walk through meetings, deliverables, collaborators, tools.
 
-Extract `weekly_rhythm` and derive `sub_note_types` using the **archetype-aware mapping** below. Use the user's vocabulary for the file names — the table just tells you which *type* of sub-note to create; the user's words determine the *label*.
-
-**Industry-aware sub-note archetypes:**
-
-| Industry / role signals | Sub-note types to scaffold (use user's words for labels) |
-|------------------------|--------------------------------------------------------|
-| Agency / freelance / brand | Design, Deliverables, Content, Business |
-| In-house product / PM | Strategy (only if senior), Decisions Log, Deliverables, Stakeholders |
-| Senior eng / SRE / backend | Tech Stack & Architecture, Decisions Log, Postmortems, Runbooks |
-| Junior eng / student / hobbyist | Tech Stack, Notes (skip Strategy unless user owns it) |
-| Game dev | Game Design Doc, Playtests, Tech Stack, Audio/Art |
-| Academic / research | Manuscript, Citations, Advisee Notes, Conference / Submissions |
-| Legal | Pleadings, Discovery, Correspondence, Time & Billing |
-| Healthcare / clinical (non-PHI ops only) | Admin, Supervision, CE / Professional Dev, Referral Partners |
-| Data / analyst | Query Library, Methodology, Stakeholders, Deliverables |
-| Trades / field service / construction | Punch List, Draws / Payments, Site Photos, Budget |
-| Real estate (sales) | Listings, Buyers, Sellers, Closings |
-| Real estate (flipping / operations) | Property Status, Contractors, Budget, Inspections |
-| Restaurant / hospitality / SMB ops | Operations, Vendors, Inventory, Marketing |
-| Consulting | Engagement Plan, Decisions, Deliverables, Stakeholders |
-| Retail / e-commerce | Catalog, Marketing, Operations, Customer Service |
-
-**Always add:** `Changelog` and `Notes/` per bucket. **Never add** "Strategy" sub-notes for users who explicitly say strategy isn't theirs to own.
-
-If the user pushes back on a label ("don't call it that, call it Punch List") → honor immediately, no apology.
+Extract `weekly_rhythm` and `sub_note_types`. Use `<industry_subnotes>` as a starting point but **always** offer the labels back to the user and accept rename without apology.
 
 ### Q4: "What tools do you live in?"
 
-> "What do you use day to day? Email, project tracking, design, docs, anything where work info lives."
+Capture as `tools`. **Live registry check** (not hardcoded): try to resolve each against the actual Claude connector registry. If `bandwidth_state = intermittent`, fall back to the cached reference table (below) and note staleness in the close.
 
-Capture as `tools` list using user's words. Then **check live** for each:
+**If `compliance_constraints` non-empty:** Do NOT proactively pitch any cloud connector.
 
-1. **For each tool**, query the live Claude connector registry (do not rely on a hardcoded table — the registry changes weekly). Categories:
-   - **Native MCP available** in Claude → guide connection per `surface` in Step 4.
-   - **Community MCP available** (e.g. Linear, Notion, Granola, GitHub, Discord, Jira, PagerDuty, Datadog) → offer to install via `claude mcp add` (Code) or via Connectors → Browse (Desktop) if path exists.
-   - **No connector** → mark `manual_tools`.
+> "Because of [constraint list], I'm marking all of these as manual unless you specifically want a connector for one. Anything you want to opt in?"
 
-2. **If `compliance_constraints` is non-empty:** Do NOT proactively pitch any cloud connector. Instead:
-   > "Because of [HIPAA / privilege / GDPR], I'm marking all of these as manual unless you specifically want a connector for one of them. Anything you want to opt in?"
+For `audit_mode = true` users (ISO/FINRA/CFR Part 11): no proactive pitch + remind that connector calls become audit-relevant events.
 
-3. **If user is on Outlook / Teams / Microsoft 365 stack** (common for legal, healthcare, finance, EU enterprise): acknowledge there's no native connector yet and frame manual as first-class:
-   > "Outlook and Teams don't have native connectors today. Manual feeding is a real workflow — drop emails into your Inbox folder, paste meeting summaries, and the vault grows from there. Many users run this way."
+For minor users: NO proactive pitch + require parental confirmation per tool.
 
-4. **Reference table for known tools** (kept current — this is illustrative, always check live):
+For mixed-NDA freelancers (one client NDA-bound, others not): set `bucket_compliance_overrides` per bucket. Connectors default off for NDA-bound buckets only.
 
-| Tool | Status (as of skill version) |
-|------|------------------------------|
+**Reference table** (illustrative — always check live):
+
+| Tool | Status |
+|------|--------|
 | Gmail, Google Calendar, Google Drive | Native |
 | Slack | Native |
 | Figma | Native |
-| Notion | Native (verify in live registry — was added late 2025) |
-| Linear | Community MCP (`@modelcontextprotocol/server-linear` or similar) |
-| Granola | Community MCP |
-| GitHub | Community MCP (`github` server) |
-| Discord | Community MCP (limited) |
-| Jira | Community MCP |
+| Notion | Native (verify) |
+| Linear, Granola, GitHub, Discord, Jira, PagerDuty, Datadog, Stripe | Community MCP — verify |
 | Monday.com | Native |
-| Outlook / Teams / SharePoint | No connector — manual |
-| Clio, Westlaw, DocuSign, Ironclad | No connector — manual (legal stack) |
-| Epic, SimplePractice, athenahealth | NEVER suggest connecting — PHI risk |
-| QuickBooks, Wave, FreshBooks, Xero | No connector — manual |
-| HubSpot, Mailchimp, Klaviyo | Mostly manual — check live |
-| DATEV, SAP, Oracle, Personio | No connector — manual (EU enterprise) |
-| Toast, Square, Shopify, Jobber, ServiceTitan | No connector — manual (SMB ops) |
-| Zotero, EndNote, JSTOR | No connector — manual (academic) |
-| SQL Server, Tableau, PowerBI, Looker | No connector — manual (analytics) |
-| Asana, Trello, ClickUp, Basecamp | Mostly manual — check live |
+| Outlook / Teams / SharePoint / Office 365 | No connector — manual; frame manual as first-class |
+| Apple Mail / iCloud Calendar / Apple Notes | Local-only; no connector — manual is normal |
+| Mews / Toast / Square / Lightspeed / Resy / OpenTable | No connector — manual (hospitality) |
+| Clio, Westlaw, LexisNexis, DocuSign, Soluno-D, Ironclad, NetDocuments | No connector — manual (legal) |
+| Epic, SimplePractice, athenahealth, Telus PSS, Practice Better, athenaOne | **NEVER connect** — PHI risk |
+| Workday, BambooHR, ADP, Greenhouse, Lattice, Cornerstone | No connector — manual (HR/payroll) |
+| QuickBooks / Xero / MYOB / Sage / DATEV / FreshBooks | No connector — manual (accounting) |
+| Salesforce NPSP / ShulCloud / Passare / KirchenSoft / Mindbody / Jobber / ServiceTitan / Aisle Planner / Practice Better / HoneyBook / Pixieset / Captivate | No connector — manual (industry-specific SaaS) |
+| Mailchimp / HubSpot / Klaviyo | Mostly manual — verify |
+| Asana / Trello / ClickUp / Basecamp | Mostly manual — check live |
+| Riverside / Descript / Loom / Vimeo / Frame.io | No connector — manual (creator stack) |
+| Procreate / Photoshop / Illustrator / Affinity / Dorico / Logic Pro / FL Studio / Aseprite | Local apps — no connector |
+| Rhino / Revit / AutoCAD / Bentley / Sketch / SAP / Aconex | No connector — manual (CAD/engineering/enterprise) |
+| Zotero / EndNote / JSTOR / Mendeley | No connector — manual (academic) |
+| ELAN / Praat / DigBase / R / SAS / Jupyter / Tableau / PowerBI / Looker | No connector — manual (research/analytics) |
+| Synergi / KeepTruckin / Aloha / Sysco | No connector — manual (field/logistics) |
+| Standard Notes / Apple Notes / Drafts / Bear | Local — no connector |
+| Signal / SecureDrop / Tails / 1Password / Vaultwarden | NEVER suggest — opsec/source-protection |
+| Telehealth platforms (any) | NEVER connect — PHI/regulated by default |
+| EHR / EMR / PMS / SIS / CPOMS | NEVER connect — regulated patient/student data |
 
-### Q5: "What keeps falling through the cracks?"
+**Hard cap: 2 connectors during onboarding.** Queue rest for `/cortex-connect-tools`. Never let a marathon happen.
 
-> "Last one — what's the thing you keep losing track of? Decisions from meetings? Action items? Deadlines? Money owed?"
+### Q5: "What keeps getting lost?"
 
-Capture as `pain_point`. Map to `next_suggestion`:
+> "Last one — what's the thing you keep losing track of? Decisions you made? Action items? Deadlines? Money owed? Something else?"
 
-| Pain Point | → Feature |
-|-----------|----------|
-| Meeting decisions / action items lost | `meeting_processing` |
-| Overwhelmed starting the day | `daily_briefing` |
-| Projects going stale, missed deadlines | `project_health` |
-| Repeating same solutions / losing useful patterns | `knowledge_extraction` |
-| Losing track of what happened last week | `weekly_review` |
-| Email follow-ups falling through | `email_triage` |
-| Tasks scattered across tools | `task_sync` |
-| Client / vendor / patient communication evaporating | `conversation_threading` |
-| Forgetting who I billed for what | `transaction_log` |
+**Do not use** "falling through the cracks". The literal phrasing is in the prompt itself.
 
-If the user names multiple pains, capture all in `pain_points.secondary` and pick the most acute as primary.
+Capture as `pain_point`. Mapping table (illustrative):
+
+| Pain | Feature |
+|------|---------|
+| Meeting decisions / action items | `meeting_processing` |
+| Overwhelmed starting day | `daily_briefing` |
+| Stale projects / missed deadlines | `project_health` |
+| Repeating same solutions | `knowledge_extraction` |
+| Last-week amnesia | `weekly_review` |
+| Email follow-ups | `email_triage` |
+| Tasks scattered | `task_sync` |
+| Conversations evaporating | `conversation_threading` |
+| Forgetting who I billed | `transaction_log` |
+| Audit-trail compliance gaps | `audit_log` (auto-enabled if `audit_mode = true`) |
+| Source / contact thread continuity | `conversation_threading` w/ alias enforcement |
+| Renewal / CE credit tracking | `project_health` w/ deadline focus |
+
+If user names 2-3 pains: capture all. Pick most acute as primary.
 
 ---
 
 ## Step 4: Connect Tools — Surface-Aware
 
-**Hard cap: connect at most 2 tools during onboarding.** Queue the rest for a later `/cortex-connect-tools` skill. The marathon-OAuth pattern kills users with limited attention or limited time.
+**Hard cap: 2.** Queue extras for `/cortex-connect-tools` follow-up. Hold the line if user pushes for more — say it'll drag setup out and is easier to do in batches later.
 
-> "Let's wire up the most important one or two now. We can do the rest later — connecting more than two right now tends to drag the setup out."
+If `compliance_constraints` non-empty OR `is_minor` OR `audit_mode`: skip the proactive pitch entirely. Confirm what they opted into in Q4 and move on.
 
-Ask which 1–2 tools matter most. Then per surface:
+For each opted-in tool, branch by `surface`:
 
-### If `surface = claude_code`:
+**Claude Code (CLI):**
+> "You're in the terminal — connectors via shell command. For [Tool]: `claude mcp add <name> -- npx -y <package>`. Run, then `claude mcp list` to confirm. Tell me when done."
 
-> "You're in the terminal, so connectors get added with a shell command, not a Settings menu. For [Tool], run this in another terminal tab: `claude mcp add <tool> -- <command>`. I'll give you the exact command. When done, type `claude mcp list` to confirm. Tell me when it's connected."
+Provide exact commands per tool. If the live registry call fails (intermittent connectivity), note staleness: "I'll use the package name I have — verify with `claude mcp list` once connected."
 
-Provide the exact command per tool. Examples:
-- Gmail (via official Anthropic gmail MCP): `claude mcp add gmail -- npx -y @anthropic/gmail-mcp`
-- Linear (community): `claude mcp add linear -- npx -y @linear/mcp`
-- GitHub: `claude mcp add github -- npx -y @modelcontextprotocol/server-github`
+**Claude Desktop:**
+> "Open Settings (⌘, on Mac, Ctrl+, on Windows) → Connectors → Add. Search [Tool], click Connect, sign in. Tell me when done."
 
-(Always check the current registry for the right invocation.)
+After connection: confirm. If `compliance_constraints` non-empty AND user opted into a tool that touches regulated data, default to `pull_mode: metadata_only`.
 
-### If `surface = claude_desktop`:
-
-> "Open Settings (⌘, on Mac, Ctrl+, on Windows) → Connectors → Add. Search for [Tool], click Connect, sign in. Tell me when it's done."
-
-For both surfaces: after connection succeeds, confirm:
-> "Connected. Pulling [Tool] context now."
-
-If connection fails or is declined:
-> "No worries. Marked [Tool] as manual — you can drop info into the Inbox or just tell me about it in chat. We can revisit later."
-
-Track results in `connected_tools`, `manual_tools`, or `available_not_connected`.
-
-**If `compliance_constraints` non-empty:** Skip the proactive pitch entirely. Confirm what the user opted into earlier in Q4 and move on.
-
-**If 0 tools to connect:** Skip cleanly:
+If user opts into 0 tools (common for regulated): clean skip:
 > "Nothing to connect today. The vault grows as you use it."
 
 ---
 
 ## Step 5: The Build
 
-Branch by `build_mode`:
+### 5.0 Always: Cortex global config
 
-### 5.0 Always: Write Cortex global config
+Write `~/.claude/cortex/config.json`:
+```json
+{
+  "vault_path": "<vault_path>",
+  "schema_version": 1
+}
+```
 
-1. Create `~/.claude/cortex/` if missing.
-2. Write `~/.claude/cortex/config.json`:
-   ```json
-   {
-     "vault_path": "<vault_path>",
-     "schema_version": 1
-   }
-   ```
-   On Windows, `vault_path` must use forward slashes OR escaped backslashes. Use forward slashes — they work on Windows and avoid escape errors.
-3. Confirm briefly:
-   > warm: "Saved Cortex config — I'll find your vault from anywhere now."
-   > terse: "Config saved."
-
-If this write fails (permission denied), STOP. Surface the exact error and instructions:
-> "Can't write to `~/.claude/cortex/config.json`. Run this once: `mkdir -p ~/.claude/cortex && chmod u+w ~/.claude/cortex` and tell me when done."
+Use forward slashes on Windows. Halt at 5.0 if write fails — surface exact error + fix command.
 
 ### 5.1 Branch by build_mode
 
 | Mode | What runs |
 |------|-----------|
 | `fresh` | 5.2, 5.3, 5.4, 5.5, 5.6, 5.7, 5.8 |
-| `sandbox` | Same as fresh, but everything goes inside `<existing_vault_path>/Cortex/`. Existing files outside that folder are never touched. |
-| `metadata_only` | 5.2 (personality + memory + changelog only), 5.5 (CLAUDE.md), 5.6 (rules into `.claude/rules/`), 5.8 (privacy_rules if needed). NO folder scaffolding. Skip 5.3, 5.4, 5.7. |
+| `sandbox` | Same as fresh, scoped to `<existing_vault_path>/Cortex/`. Existing files outside untouched. |
+| `metadata_only` | 5.2 (write personality + memory + changelog only — check for collisions first), 5.6 (CLAUDE.md), 5.7 (`.claude/rules/`), 5.8 (privacy.md if needed). Skip 5.3, 5.4, 5.7 vault-structure scaffolding. |
 
-For accessibility (`accessibility.screen_reader = true`):
-- Replace any "watch your vault" line with: *"I'll narrate each file as I create it."*
-- After each major file, say its name and purpose ("personality file written — that's the one Cortex reads each session to know your work").
-- Do NOT echo full paths or YAML in monospace blocks.
+### 5.2 Core scaffold (file-collision aware)
 
-For terse mode: skip narration entirely except for the final summary list.
+In `vault_path` (or sandbox subfolder):
 
-### 5.2 Core scaffold (always for fresh/sandbox; partial for metadata_only)
-
-In `vault_path` (or `<existing_vault_path>/Cortex/` for sandbox):
-
-1. **`memory.md`** — populated with user identity from discovery (same shape as before).
-2. **`personality.md`** — see Personality Generation below.
-3. **`_changelog.txt`** — initialized with creation entries.
+1. `memory.md` — user identity from discovery
+2. `personality.md` — full YAML (see Personality Generation)
+3. `_changelog.txt` — initial entries (append-only if `audit_mode`)
 
 For fresh/sandbox only:
-4. **`_Inbox/`** with `_MOC.md`.
-5. **`Knowledge Base/`** with `_MOC.md`.
+4. `_Inbox/` with `_MOC.md`
+5. `Knowledge Base/` with `_MOC.md`
 
-### 5.3 Folder structure (fresh/sandbox, archetype-aware)
+**For metadata_only mode:** check existence of any of these at vault root before writing. If exists, ask user.
+
+### 5.3 Folder structure (archetype-aware)
 
 | Archetype | Structure |
-|-----------|----------|
-| `portfolio` | `<bucket_term>/<each bucket>/...` (current default) |
-| `queue` | Single `<bucket_term>/` folder with `Active.md` (live list), `Archive/`, and `_Templates/` containing one `New <child_term>.md` template. Do NOT create a folder per ticket. |
-| `single_product` | `<product_name>/` at top level with `<workstream>/` sub-folders inside |
-| `hybrid` | `<bucket_term>/` AND `<secondary_axis>/` as siblings, each with their own contents |
+|-----------|-----------|
+| `portfolio` | `<bucket_term>/` with one folder per bucket; nested if `nested_buckets=true` per bucket |
+| `queue` | Single `<bucket_term>/` folder with `Active.md` (live list, redacted/coded if `compliance_constraints` requires), `Archive/`, `_Templates/`. NO folder per item. |
+| `single_product` | `<product_name>/` at top with `<workstream>/` sub-folders. Nested children inside workstreams if user volunteered. |
+| `hybrid` | Multiple top-level peers — one for each `bucket_term` axis + one for each `secondary_axes` entry. |
+| Mixed (per-bucket variation) | Build each bucket per its declared archetype. Honor reality. |
 
-If `nested_buckets = true` (portfolio with two-level): each bucket folder contains a `<child_term>/` subfolder, and project hubs go inside the child level. For example, `Clients/Acme/Projects/Q4 Launch/`.
+For `secondary_axes` — list scaffold each as a top-level peer folder. Don't collapse to one. `parallel_threads` similarly get top-level peer folders.
 
-Use the user's exact vocabulary for every folder name.
+If `restricted_subnotes` is set: each restricted sub-note gets a `_README.md` inside with the access-tier notice + a corresponding entry in `personality.md` so future sessions check before surfacing content.
 
-### 5.4 Project hubs (fresh/sandbox + portfolio archetype)
+### 5.4 Project hubs (fresh/sandbox + portfolio/hybrid only)
 
-For each bucket the user named, build inside the appropriate level:
-1. `<Bucket Name>/` folder
-2. `_MOC.md` indexing the hub + sub-notes + meeting notes
-3. `<Bucket Name> — Context.md` from `assets/blank-template.md` (use user's `bucket_term` not the literal "Project Context" if their term is different)
-4. Sub-notes per `sub_note_types` from Q3 — **use the user's words for labels** (e.g. "Punch List.md" not "Deliverables Tracker.md" if Brooks said "punch list")
-5. `Changelog.md`
-6. `Notes/` for future meeting notes
+For each named bucket: `_MOC.md`, `<Bucket Name> — Context.md` (use user's word for "Context" — could be "Kontext", "Contesto", "Contexte"), sub-notes per Q3 in user's vocabulary, `Changelog.md`, `Notes/`.
 
-If `secondary_axis` is set, scaffold its folder structure too with appropriate sub-notes (e.g. `Contractors/Mike's Crew/...`).
+Apply per-bucket compliance overrides — if a specific bucket is NDA-bound, write that into the bucket's frontmatter so future sessions check before exporting from that folder.
 
-Log every created file/folder to `_changelog.txt`.
+For queue archetype: build only the single `Active.md` + template, not per-item folders.
 
 ### 5.5 Pull real data (fresh/sandbox)
 
-For each tool in `connected_tools`, pull last 24h. Same as before with one addition:
+For each `connected_tool`, pull last 24h. Apply `pull_mode`:
+- `full` — bodies + metadata, default for non-regulated
+- `metadata_only` — subjects/senders/timestamps only, default for `compliance_constraints` non-empty
+- Apply `exclude_on_ingest` filters: skip threads/events matching filter terms (English + non-English).
 
-**If `compliance_constraints` non-empty AND a connected tool is one that might pull regulated data** (e.g. user opted to connect work Gmail despite HIPAA): pull only metadata (subject lines, sender, timestamp) NOT body content. Surface a note:
-> "I pulled metadata only from [Tool] — not message bodies — because you flagged this as regulated. You can paste specific excerpts manually anytime."
-
-Skip if no connected tools.
+Surface what was pulled and what was skipped:
+> "Pulled metadata only from [Tool] — not message bodies — because of [constraint]. Skipped [N] items matching exclusion filters."
 
 ### 5.6 Personalized CLAUDE.md
 
-Same as before — read `framework/CLAUDE.md`, replace placeholders. Add new placeholders:
-- `{{CHILD_TERM}}` → `child_term`
-- `{{ARCHETYPE}}` → `vault_archetype`
-- `{{COMPLIANCE}}` → comma-joined `compliance_constraints` or "none"
+Read `framework/CLAUDE.md`. Replace placeholders:
 
-If `{{COMPANY}}` is empty, render the surrounding sentence cleanly without dangling phrasing (e.g. "you work as a [role]" instead of "you work as a [role] at ").
+| Placeholder | Value |
+|------------|-------|
+| `{{NAME}}` | `user_name` |
+| `{{ROLE}}` | `user_role` |
+| `{{COMPANY}}` | `user_company` (render cleanly when empty — "you work as a [role]" not "you work as a [role] at ") |
+| `{{BUCKET_TERM}}` | `bucket_term` (or list when multiple via secondary_axes) |
+| `{{CHILD_TERM}}` | `child_term` (or per-bucket map) |
+| `{{ARCHETYPE}}` | `vault_archetype` (or per-bucket map) |
+| `{{COMPLIANCE}}` | comma-joined `compliance_constraints` or "none" |
+| `{{SOFT_CONSTRAINTS}}` | comma-joined `soft_constraints` if non-empty |
+| `{{LOCALE_HINT}}` | `accessibility.locale_hint` |
 
-### 5.7 Copy rules + personalize vault-structure.md (fresh/sandbox)
+### 5.7 Rules + personalize vault-structure
 
-Same 7 rules. Personalize `vault-structure.md` with:
-- Actual folder layout
-- Bucket / child / secondary axis terminology
-- Routing rules per archetype
+Copy 7 rules. Personalize `vault-structure.md` with actual layout, archetype, terminology, routing rules.
 
-If `build_mode = sandbox`, mark `vault-structure.md` as ADVISORY at the top: *"This describes the Cortex subfolder. Your existing vault structure outside `Cortex/` is your source of truth and Cortex won't restructure it."*
+If `build_mode = sandbox`: mark vault-structure.md ADVISORY at the top.
 
-### 5.8 Privacy rules (always when `compliance_constraints` non-empty)
+If `audit_mode = true`: add an `audit-trail.md` rule explaining append-only changelog discipline.
 
-Write `.claude/rules/privacy.md` listing every constraint and the corresponding behavior:
-```markdown
-# Privacy Rules
+If `restricted_subnotes` non-empty: add an access-tier rule that future skills must check.
 
-This vault is scoped to exclude regulated data. Future Cortex sessions must respect these constraints.
+### 5.8 Privacy rules — variant by use case
 
-## Constraints
-- HIPAA: This vault must not contain PHI (patient names, identifiers, session content).
-- ...
+When `compliance_constraints` is non-empty OR `exclude_on_ingest` is set OR `is_minor = true` OR `works_with_minors = true`, write `.claude/rules/privacy.md`. Pick the variant:
 
-## Behavior
-- Never suggest connecting [SimplePractice / Epic / Clio / etc.]
-- Never accept inbox drops that contain identifiers — refuse and ask user to redact.
-- All connectors default OFF; opt-in is per-tool, per-session.
-```
+| Variant | When | Key behaviors |
+|---------|------|--------------|
+| **regulatory** | HIPAA/GDPR/FINRA/etc. | Refuse PHI/PII drops; never connect EHR/EMR/payroll/etc.; metadata-only on cloud pulls; redact identifiers. |
+| **opsec** | NDA / source-protection / cybersec / journalism / dissident | Aliases-only; refuse aggregation that re-identifies; refuse cross-engagement linkage on protected sources; never connect Signal/SecureDrop/Tails-side; never run web searches that correlate. |
+| **clergy** | Beichtgeheimnis / Seelsorgegeheimnis / seal of confession | Confessional content NEVER logged or paraphrased; pastoral notes metadata-only (date, codename, follow-up); refuse any LLM summarization of confidential interactions. |
+| **minor** | Self-identified <18, especially <13 | All connectors default OFF; require parental confirmation per opt-in; refuse drops with peer minors' identifying info; close mentions parental supervision. |
+| **mixed-NDA** | Per-bucket compliance variation | Per-bucket rules — quote each bucket's flag in frontmatter; refuse pulls/exports from NDA-bound buckets without per-session re-confirmation. |
+| **audit-mode** | ISO/FINRA/IATF/CFR Part 11 | Changelog is append-only, timestamped, and exportable as audit packet; refuse edits to past entries without explicit audit-amendment flag. |
 
-Also add `compliance_constraints` to `personality.md` so cortex-boot reads it every session.
+Multiple variants can stack — write all that apply.
 
-### Personality Generation
+### 5.9 Personality.md generation
 
-Same YAML shape as before, with these additions:
+YAML frontmatter:
 
 ```yaml
 identity:
-  ...
+  name: "[user_name]"
+  role: "[user_role]"
+  company: "[user_company]"
+  industry: "[user_industry]"
+  self_description: "[verbatim]"
   is_developer: [true/false]
+  is_minor: [true/false, only if applicable]
+  works_with_minors: [true/false]
+  pronouns: "[only if user volunteered]"
   accessibility:
-    screen_reader: [true/false]
-    low_vision: [true/false]
-    locale_hint: "[BCP-47 hint if known]"
-  compliance_constraints: ["HIPAA", "attorney-client", ...]   # empty list if none
+    screen_reader: [bool]
+    low_vision: [bool]
+    no_audio: [bool]
+    sensory_predictability: [bool]
+    locale_hint: "[BCP-47 if known]"
+    neurodivergence_signals: []
+  compliance_constraints: ["..."]
+  soft_constraints: ["..."]
+  exclude_on_ingest: ["..."]
+  audit_mode: [bool]
 
 mental_model:
-  bucket_term: "[user's word]"
-  child_term: "[user's word for sub-level, equal to bucket_term if not nested]"
-  nested_buckets: [true/false]
-  secondary_axis:
-    name: "[user's word, or null]"
-    type: "[roster type — vendors, contractors, etc., or null]"
-  vault_archetype: "[portfolio / queue / single_product / hybrid]"
-  buckets:
-    - name: "..."
-      type: "..."
-      sub_notes: ["user's words"]
+  bucket_term: "..."
+  buckets: [{name, type, archetype, child_term, nested, sub_notes, compliance_override}]
+  secondary_axes: [{name, type, archetype}]
+  parallel_threads: [{name}]
+  restricted_subnotes: ["..."]
+  vault_archetype: "..." # or "mixed"
 
-tone_register: "warm" | "terse"
+tone_register: "warm" | "casual" | "terse" | "formal"
+trust_register: "default" | "high_disclosure"
 build_mode: "fresh" | "sandbox" | "metadata_only"
-
 surface_at_setup: "claude_code" | "claude_desktop"
+secondary_surface: { ... }
+co_installer: "[name + relationship if any]"
 
-tools: ...   # same shape, plus available_not_connected with reasons
+tools:
+  connected: [{name, connector, pull_mode, data_feeds}]
+  manual: [{name, input_method}]
+  available_not_connected: [{name, reason}]
+  never_connect: ["..."]   # populated from compliance gates
+
+rhythms:
+  meetings: ["..."]
+  work_patterns: "..."
+  review_cadence: ""
+
+pain_points:
+  primary: "..."
+  secondary: ["..."]
+
+progressive_features:
+  active: ["memory_management", "inbox_processing", "changelog_logging", "wikilink_discovery", "moc_maintenance", "frontmatter_conventions"]
+  dormant: ["meeting_processing", "daily_briefing", "project_health", "knowledge_extraction", "weekly_review", "content_drafting", "goal_tracking", "email_triage", "task_sync", "conversation_threading", "transaction_log", "audit_log"]
+  next_suggestion: "[mapped from pain_point]"
 ```
 
-`self_description` MUST be the user's exact words. Never sanitize.
+`self_description` MUST be verbatim. Never sanitize.
 
 ---
 
 ## Step 6: Developer Setup
 
-Only run if `is_developer = true` (strict definition: user self-references coding work).
+Only run if `is_developer = true` (strict self-reference).
+
+For minors who are developers: STILL skip the install-desktop mirror and only register repos with parental confirmation.
 
 ### 6.1 Cross-surface install — platform-aware
 
-The `install-desktop.sh` script is **macOS-only**. Branch:
+| Platform | Action |
+|----------|-------|
+| macOS | Run `bash ${CLAUDE_PLUGIN_ROOT}/scripts/install-desktop.sh`. Mirrors into `~/Library/Application Support/Claude/...` and `~/.claude/plugins/`. |
+| Linux | Mirror into `~/.claude/plugins/` only. No Claude Desktop on Linux. |
+| Windows | Mirror into `%USERPROFILE%\.claude\plugins\` and `%APPDATA%\Claude\...`. Use `install-desktop.ps1` if shipped, else skip cleanly with one-line note. |
 
-| Platform | What to do |
-|----------|-----------|
-| macOS | Run `bash ${CLAUDE_PLUGIN_ROOT}/scripts/install-desktop.sh` to mirror into `~/Library/Application Support/Claude/...` and `~/.claude/plugins/` |
-| Linux | Mirror into `~/.claude/plugins/` only. There is no Claude Desktop on Linux. |
-| Windows | Mirror into `%USERPROFILE%\.claude\plugins\` and `%APPDATA%\Claude\...` (Claude Desktop on Windows uses `%APPDATA%`). Use the `install-desktop.ps1` script or run the Node port. If neither exists, skip cleanly. |
+If script doesn't exist for the platform, say so and proceed.
 
-If the platform-specific script doesn't exist, skip and inform:
-> "Cross-surface mirror isn't packaged for [platform] yet. Cortex still works in this surface — you just won't get the auto-load in the other one until you re-run setup there."
+### 6.2 Repo registration
 
-### 6.2 Offer repo pointers
+For each repo: ask absolute path + matching project, hand off to `register-repo.md`. For Windows users on GitHub Desktop, ask: "Right-click a repo → Show in Explorer for the path."
 
-Same as before. For each repo: ask absolute path + matching project, hand off to `register-repo.md`.
-
-If user is on Windows and uses GitHub Desktop, ask the path explicitly — don't assume CLI familiarity:
-> "What's the folder path? In GitHub Desktop, right-click a repo → Show in Explorer to find it."
+For mixed-NDA developers: register only repos that aren't NDA-restricted; flag others as `available_not_registered`.
 
 ---
 
@@ -565,54 +666,186 @@ If user is on Windows and uses GitHub Desktop, ask the path explicitly — don't
 
 ### 7.1 Demo — branch by `connected_tools`
 
-**If at least one connector pulled data:**
+If at least one connector pulled real content (not metadata-only):
 > "Try me — ask anything about your work."
 
-User asks. Answer with citations to the freshly pulled data and their bucket structure.
+If only metadata pulled OR no connectors:
+> "Let me show you what this gives you even without connectors. Tell me one thing — a decision today, a deadline coming up, anything. I'll log it to the right [bucket] and you'll see it appear."
 
-**If no connectors (most common for regulated / SMB / hobbyist users):**
+For minors / casual / low-tech: phrase as "Tell me something simple — what you worked on today, what's coming up, anything."
 
-Don't ask "ask me anything" — there's no historical data to demo. Instead, **demo persistent capture**:
-> "Let me show you what this gives you even without connectors. Tell me one thing — a decision you made today, a deadline coming up, anything. I'll log it to your [bucket] and you'll see it appear in the vault."
+For regulated users: remind in the prompt: "Use a code or initials, not a name."
 
-User says something. Log it via the capture flow. Show the file appear. Then:
-> "Next session, I'll know that. That's the loop."
+For `is_developer = true` with repos registered: also reference the repo state ("I scanned [repo] — top-level looks like X. Next time you open it in Claude Code from that folder, this context loads automatically.").
 
-**If `is_developer = true` AND repos registered:** Demo by referencing the registered repo:
-> "I scanned [repo name] — here's what I see at the top level. Next time you open it in Claude Code, this context loads automatically."
+### 7.2 Close — composed, not table-locked
 
-### 7.2 Close
+The close composes any of these lines based on captured state:
 
-Drop the infomercial. Substitute a concrete next-action sentence based on captured state:
+| State | Sentence |
+|-------|---------|
+| Always (if any compliance/exclude/minor) | "Privacy rules are written into `.claude/rules/privacy.md` so future sessions respect them." |
+| Has `next_suggestion` from Q5 | "The thing you mentioned — [pain_point in user's words] — maps to a feature called [feature]. [activation hint]." |
+| Has `secondary_surface` (iPad/phone) | "For your [secondary surface] — open the same folder via [iCloud Drive / Obsidian Sync / Syncthing]." |
+| Has `co_installer` | "If you get stuck, [co_installer] can pick this back up — folder is at `[vault_path]`." |
+| Audit-mode | "Changelog is append-only — your audit trail is `_changelog.txt`." |
+| Restricted sub-notes | "[Restricted folder] is marked private — never quoted in summaries unless you ask." |
+| Default | "Drop notes anytime; ask me what's going on with [first bucket]." |
 
-| State | Closing line |
-|-------|-------------|
-| Has `next_suggestion` (from Q5) | "Cortex is set up. The thing you mentioned — [restate pain point] — maps to a feature called [name]. Say `/cortex-coach activate [feature]` when you want it on." |
-| Has compliance constraints | "Cortex is set up. Privacy rules are written into `.claude/rules/privacy.md` so future sessions respect them. Drop notes when you want; never paste regulated data." |
-| Default | "Cortex is set up. Drop notes, ask me what's going on with [first bucket name], or run `/cortex-status` anytime." |
+**Activation hint per `tone_register`:**
+- `casual` / `warm` / `formal`: "Say `/cortex-coach activate [feature]` when you want it on."
+- `terse`: "Run `/cortex-coach activate [feature]`."
+- For low-tech / minor / `formal` British / formal Japanese register / heavy ESL: "Tell me later when you want help with [feature]." (No slash command.)
 
-**Never use:** "Imagine the things you could do now", "the exciting part", "second brain" (after Step 1), or any infomercial register.
-
-For terse mode: cut to one sentence — *"Done. Try `/cortex-status [first bucket]`."*
+**Banned closing phrases:** "Imagine the things you could do now", "the exciting part", "second brain" (post-Step 1), "Sound good?" (sounds infomercial after a long flow), any meta-commentary about the setup itself.
 
 </flow>
 
+<industry_subnotes>
+
+Sub-note types per industry. Use the user's words for labels — this table just suggests the *type* of note. Honor pushback without apology. If a row matches none of the user's situation, derive from Q3 weekly_rhythm + their vocabulary.
+
+| Industry / role | Sub-note types (suggest, then rename to user's words) |
+|-----------------|------------------------------------------------------|
+| Agency / freelance brand | Design, Deliverables, Content, Business |
+| Junior eng / student / hobbyist | Tech Stack, Notes (skip Strategy unless owned) |
+| Senior eng / SRE / backend | Tech Stack & Architecture, Decisions Log, Postmortems, Runbooks |
+| In-house product / PM (senior) | Strategy, Decisions Log, Deliverables, Stakeholders |
+| In-house product / PM (junior) | Decisions Log, Deliverables, Stakeholders (drop Strategy) |
+| Designer at product co | Design specs, Decisions Log, Stakeholders, Deliverables (drop Strategy unless designer owns it) |
+| UX writer | Copy Decks, Voice & Tone, Walkthroughs, Client Comms |
+| Game dev (studio) | Game Design Doc, Playtests, Tech Stack, Audio/Art |
+| Game design (AAA) | GDD, Playtests, Tuning, Partner Sync |
+| Indie game dev / hobbyist | GDD, Playtests, Tech Stack |
+| Indie filmmaker | Script, Production, Post, Festival & Grants, Press, Budget |
+| Photographer (events / weddings) | Timeline, Shot List, Couple Communication, Vendor Coordination, Delivery |
+| Music education / school | Lesson Plans, Repertoire, Recordings (older students only), Parent Contact |
+| Performing musician | Setlist, Charts, Personnel, Venue Notes, Settlement |
+| Indie podcaster / audio engineer | Show Brief, Episodes (Session, EDL/Edit, Mix Sheet, Deliverables), Stakeholders |
+| Creator / streamer / influencer | Content Calendar, Sponsors & Brand Deals, Audience & Analytics, Revenue, Community |
+| Illustrator / concept artist | Brief & References, Roughs, Finals, Art Direction Notes, Contract & Rights |
+| Religious art / iconographer | Iconographic Program, Stage Approvals, Pigment / Materials, Canon Notes |
+| Translator (literary) | Manuscript, Source/Quellen, Correspondence (Author / Publisher), Contract |
+| Memoirist / writer | Manuscript, Chapters, Citations, Sources / Interviews, Themes & Threads |
+| Academic (research, dissertation) | Manuscript, Citations, Advisee Notes, Conference / Submissions |
+| Academic field science (archaeology, fieldwork) | Field Journal, Context Sheets, Finds Register, Documentation, Permit & Compliance, Supervisor Reports |
+| Academic library | Collection Development, Acquisitions, Vendors, Instruction Sessions, Compliance |
+| Higher-ed admin / faculty (regulated) | Per-program: Decisions Log, Deliverables, Compliance & Reporting, Stakeholders |
+| K-12 teacher (institution side) | Lesson Plans, Schemes of Work / Curriculum, Assessment, Parent Comms, CPD (NEVER pupils) |
+| K-12 admin / principal | Programs, Workstreams, Compliance & Reporting, Coaching, Stakeholders |
+| Tutor (K-12 / language) | Lesson Plans, Homework, Progress Notes, Parent Communication, Materials |
+| Legal (common-law solicitor / barrister) | Pleadings, Discovery, Correspondence, Time & Billing, Authorities |
+| Legal (civil-law notary, Quebec/France/Louisiana/EU) | Acte, Documents au dossier, Correspondance, Signature, Minutier, Temps & facturation |
+| Healthcare (clinical, NON-PHI ops only) | Admin, Supervision, CE/CEUs, Referral Partners, Credentials, Compliance |
+| Mental health (non-PHI) | Practice Admin, Supervision, CE / Professional Dev, Referral Partners |
+| Funeral / mortuary | Arrangement Notes, Paperwork, Vendors on this service, Timeline, Family Follow-Up, Billing, (per-family roster: Family Tree & History, Past Services, Aftercare) |
+| Data / analyst | Query Library, Methodology, Stakeholders, Deliverables |
+| Trades / field service / construction | Punch List / Restpunkte, Draws / Payments / Abschläge, Site Photos / Anschlagprotokoll, Budget |
+| Real estate (sales) | Listings, Buyers, Sellers, Closings |
+| Real estate (flipping) | Property Status, Contractors, Budget, Inspections |
+| Restaurant / hospitality / SMB ops | Operations, Vendors, Inventory, Marketing |
+| Restaurant (regulated SMB EU) | Operations, Vendors, HACCP, URSSAF/Labor Compliance, Marketing |
+| Hotel / hospitality | Operations, Vendors, Reviews & Themes, Bookings, Compliance |
+| Multi-unit franchisee | per-Location: Operations, Staff, Health & Safety, Corporate Compliance, Vendors, Financials |
+| Consulting (management) | Engagement Plan, Decisions, Deliverables, Stakeholders, Decisões/Frameworks |
+| Consulting (cybersecurity / pen-test) | Recon, Exploit Dev, SE Pretexts, Evidence, Report Draft, Decisions Log, Scope & NDA |
+| Retail / e-commerce | Catalog, Marketing, Operations, Customer Service |
+| Creator / online course | Curriculum, Recipes/Modules, Content Calendar, Brand & Voice, Audience & Marketing, Customer Support |
+| HR / People Ops | Per workstream (Recruiting/ER/Comp/L&D/DEI): per-workstream sub-notes; Compliance, Vendors |
+| Bookkeeping / accounting | Per client: Lodgements/Filings, Reconciliation, Correspondence, Time & Billing |
+| RIA / wealth management / CFP | Per household: Financial Plan, Portfolio, Insurance & Estate, Tax, Compliance & Filings, Correspondence, Meeting Prep |
+| Charity / nonprofit | Per program: Funder Reports, Budget, Supervision Notes, Safeguarding Log (flag-only), Compliance |
+| Refugee / asylum casework | per-Case (coded): Status, Housing, Benefits & Documents, School & Kids, Legal/Asylum, Contacts Used (NEVER full names) |
+| Welfare / elderly casework | Visit Notes (coded), Service Plan, Family Contact, Monthly Report (no PII) |
+| Logistics / dispatcher | per-Load: Rate Con, BOL, Detention/Claims, Pay Status |
+| Field safety / inspector / oil-rig | per-Site (coded): Inspection Reports, Non-Conformities, Incident Log, Audit Trail, Operators (PII separated), KPI |
+| Manufacturing / factory supervisor | per-Line/Station: Startup Checklist, Incidents Log, Maintenance, Handover, Audit Trail, Operators (PII separated), KPI |
+| Government / municipal IT | per-Department/System: Architecture, Decisions Log, Postmortems, Runbooks, Compliance |
+| Enterprise architect (banking/insurance) | per-System: Solution Designs, Decisions Log (ADRs), Diagrams, Stakeholders, Vendor Notes, Compliance Evidence, ARB Minutes |
+| Civil / structural engineer | per-Project: Design Packages, Drawings & Submissions, RFIs & Site Queries, Design Review Notes, Standards & Compliance |
+| Architect | per-Project: Design Development, Structural Coordination, Building Code Review, Client Meetings, Coordination, Deliverables |
+| Pharmaceuticals / clinical research | per-Study: SAP, TLFs, ADaM, CSR, Methodology, Stakeholders, Regulatory Correspondence |
+| Trader / quant / personal investing | per-Strategy: Thesis, Position Log, Risk Notes, Reconciliation |
+| Solo crypto trader (paranoid) | Strategies / Positions / Venues — opsec-flavored, exclude operational data |
+| Diplomat / memoirist (classified-adjacent) | Manuscript, Citations & Sources, Correspondence with Sources, Chronology & Timeline, Themes & Threads |
+| Investigative journalist | per-Investigation: Documents, Source Log (initials only), PAIA/FOIA Requests, Timeline, Drafts, Risk Assessment |
+| Sommelier / wine consultant | per-Restaurant: Wine List, Tasting Notes, Staff Training, Cellar Inventory, Decisions & Sourcing |
+| Clergy / pastor / priest | per-Bereich: Verwaltung, Termine & Vorbereitungen, Korrespondenz, Sakramentenregister-Verweise, Pastoral (codename only) |
+| Synagogue / temple admin | per-Area: Programs, Operations, Members, Donors, Vendors, Compliance |
+| Hobby / kid / personal projects | Ideas, To Build, What I Learned, Bugs |
+| Memoirist / retiree (single project) | Chapters, Sources/Interviews, Research, Themes |
+| Sailor / ship-side / offshore | per-Voyage / Rig: Operations, Safety, Inspections, Crew |
+
+When industry isn't listed, derive from Q3 verbatim. Never force a misfit row.
+
+</industry_subnotes>
+
+<esl_substitutions>
+
+For ESL users (any non-English `locale_hint`) and low-tech users, substitute literal phrasing for these idioms:
+
+| Idiom (banned) | Substitute |
+|----------------|-----------|
+| falling through the cracks | what you keep losing track of |
+| second brain (after Step 1) | memory layer |
+| imagine the things you could do | concrete next-action sentence |
+| the exciting part | "now I'll build the structure" |
+| wire up | connect |
+| under the hood | inside |
+| down the road | later |
+| heads up | one quick thing |
+| sound good? | OK? |
+| keep an eye on | watch / track |
+| drag and drop | drag |
+| grab (for download) | download |
+| nail it | get it right |
+| iron out | fix |
+| hit the ground running | start working right away |
+| ballpark | rough estimate |
+| circle back | come back to |
+
+Always honor user-introduced non-English vocabulary. After 2-3 such terms appear, ask once: "Want any folder names in [language], or English everywhere?"
+
+</esl_substitutions>
+
 <error_handling>
 
-- **Cannot write `~/.claude/cortex/config.json`** — Surface exact permission error + fix command. Halt at 5.0.
-- **Obsidian install blocked / no admin rights** — Switch to `obsidian_installed = false`, vault folder only, edit in any text editor. Continue.
-- **macOS Gatekeeper warning** — Pre-warned in Step 2.3. If user still hits it, instruct: right-click → Open → Open in dialog.
-- **Connector auth fails** — Mark `available_not_connected` with reason. Continue. Offer retry post-build.
-- **User refuses connectors due to compliance** — Skip Step 4 entirely, ensure 5.8 (privacy rules) runs.
-- **Vague discovery answer** — Use sensible default with the user's first-mentioned vocabulary. Never invent terms they haven't said.
-- **User wants to stop mid-flow** — Save partial state to `personality.md` with `setup_status: incomplete`. Resume next session.
-- **Vault path collision (file already exists)** — Never overwrite. Ask once: alongside / different name / cancel.
-- **Connector marathon (>2 tools requested)** — Hard-cap at 2. Queue rest for `/cortex-connect-tools` follow-up.
-- **`is_developer` mis-set** — If detected wrong post-Q1 (user mentioned "we have devs" not "I code"), correct quietly and skip Step 6.
-- **User on regulated industry but flow already ran connector pitch** — Roll back, mark every connected tool for review, write privacy rules.
-- **Linux + Step 6.1** — Skip the install-desktop.sh; inform that cross-surface mirror is macOS-only.
-- **Windows path encoding in config.json** — Always write with forward slashes.
-- **Pulled data is enormous** — Cap at 24h. Cap message bodies if compliance_constraints non-empty.
-- **Unrecoverable filesystem error** — Surface, do not retry-loop.
+| Failure | Action |
+|---------|-------|
+| Cannot write `~/.claude/cortex/config.json` | Surface exact error + fix command (`mkdir -p ~/.claude/cortex && chmod u+w ~/.claude/cortex`). Halt at 5.0. |
+| Obsidian install blocked / no admin / IT-managed | `obsidian_installed = false`, vault folder + any text editor. Continue. |
+| Endpoint DLP intercept | Probe extensions/patterns at risk. Default to .md (usually safe). Warn against PII paste. |
+| iPad/phone-only user | Hard-pivot or refuse: "Cortex needs Mac/Win/Linux. iPad can read via sync but can't be the primary." |
+| Win XP / very old OS | Halt: explain Obsidian + Cortex don't support; revisit when current. |
+| macOS Gatekeeper | Pre-warned in 2.5. If user hits it: right-click → Open → Open in dialog. |
+| Windows SmartScreen | Pre-warned. "More info" → "Run anyway". |
+| Existing Obsidian vault | Offer fresh / sandbox / metadata_only. Default: sandbox for unsure. |
+| Connector auth fails | Mark `available_not_connected`, continue. |
+| User refuses connectors due to compliance | Skip Step 4. Ensure 5.8 privacy.md runs. |
+| Regulated industry without explicit constraints named | Auto-set per `<compliance_triggers>`. Default connectors OFF. |
+| Mid-flow stop | Save partial state to personality.md `setup_status: incomplete`. Resume next session. |
+| Vague Q answers | Sensible default in user's first-mentioned vocabulary. Never invent terms. |
+| `is_developer` mis-set | If detected wrong post-Q1, correct quietly, skip Step 6. |
+| User on regulated industry but flow already pitched connector | Roll back, mark connected tools for review, write privacy.md. |
+| Linux + Step 6.1 macOS-only | Skip cleanly with one-liner. |
+| Windows path encoding | Forward slashes in config.json. Always. |
+| 3+ tools wanted | Hard cap at 2 in onboarding. Queue rest for `/cortex-connect-tools`. |
+| Screen-reader / low-vision | File-by-file narration. Skip monospace YAML/path echoes. Offer non-Obsidian editor. |
+| Deaf / no-audio | Refuse all audio output paths. Captions for any video. |
+| Autistic / sensory-predictability | Announce step transitions. List build files in advance. Offer all 5 questions upfront if requested. |
+| ADHD | Cap at 2 connectors hard. Flag Step 4 + Step 7 as "novelty waypoints". Narrate motion during build. |
+| Operational queue (>20 active items) | Single folder + Active.md log + template. NEVER one folder per item. |
+| Multi-axis hybrid (3+ secondary axes) | Scaffold all as siblings via `secondary_axes` list. |
+| ESL / non-English locale | Substitute idioms per `<esl_substitutions>`. Offer non-English folder labels after 2-3 user terms. |
+| Spotty wifi / live-registry call fails | Use cached reference table. Note staleness in close. |
+| Self-identified minor | Pause. Ask if parent present. Default ALL connectors OFF. Write minor-variant privacy.md. |
+| Mixed NDA per bucket | Set `bucket_compliance_overrides`. Per-bucket frontmatter flag. |
+| Audit-mode (ISO/FINRA/etc.) | Append-only changelog. Audit-trail variant of privacy.md. Edits require explicit amendment flag. |
+| Co-installer mentioned | Acknowledge once. Mention at close. |
+| Multi-jurisdictional compliance | Stack all regimes in `compliance_constraints`. Privacy.md names each. |
+| Soft constraints (canon / craft / tradition) | Store separately in `soft_constraints`. Don't conflate with regulatory. |
+| Pulled data is enormous | Cap at 24h. Metadata-only if `compliance_constraints` non-empty. |
+| File collision in metadata_only | Check before writing. Ask before overwrite. |
+| Unrecoverable filesystem error | Surface, halt, do not retry-loop. |
 
 </error_handling>
