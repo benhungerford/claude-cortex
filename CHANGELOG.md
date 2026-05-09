@@ -1,5 +1,37 @@
 # Claude Cortex Plugin — Changelog
 
+## v1.4.0 — 2026-05-09
+
+**Onboarding rewrite + Q1 hardening + Q2 foundations.**
+
+Onboarding:
+- Comprehensive onboarding rewrite from 100-profile audit addressing 31 systemic gaps
+- Adaptive tone register (4 levels: warm/terse/casual/formal) with separate trust register
+- Surface awareness: Claude Code CLI vs Claude Desktop branching, iPad hard-pivot
+- Compliance auto-detection for 50+ regulatory regimes (HIPAA, GDPR, FERPA, FINRA, etc.)
+- Multi-axis schema: `secondary_axes` as list, per-bucket compliance variation, 3-level hierarchy support
+- Three build modes: fresh / sandbox / metadata-only for existing vault integration
+- Cloud-sync collision detection, IT/DLP awareness, accessibility across 5 dimensions
+- ESL idiom screening, minor user protections, co-installer acknowledgment
+- Expanded failure mode table covering 30+ edge cases
+
+Q1 — Hardening:
+- Path-traversal guard: `resolveInsideVault()` wired into 7 MCP tools
+- Cross-platform hook guards: `command -v python3` gating on all 4 hooks
+- `boot-context.py`: `encoding="utf-8"` on all `open()` calls with `UnicodeDecodeError` handling
+- `search-db.js`: `journal_mode=WAL` + `busy_timeout=5000` for concurrent access
+- Dead code removal: session-start trigger-phrase cache (never read)
+- `install-desktop.sh`: reads version from `plugin.json` instead of hardcoded value
+
+Q2 — Foundations:
+- Registry reconciliation: `<vault>/.claude/cortex/registry.json` as single source of truth
+- New `register_repo` MCP tool (14 tools total)
+- Shared `lib/registry.js` for load/save/lookup with legacy `_repo_registry.json` fallback
+- Changelog write chokepoint: `lib/changelog-format.js` with `formatChangelogEntry()`
+- `bin/append-changelog-cli.js` Node helper for hooks
+- Token-budgeted boot: `boot-context.py --budget-chars` (default ~8000 chars ≈ 2000 tokens)
+- 119/119 MCP tests, 20/20 hook tests
+
 ## v1.3.1 — 2026-04-19
 
 **Auto-install MCP dependencies on launch.**

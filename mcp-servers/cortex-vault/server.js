@@ -31,7 +31,7 @@ registerTool(require('./tools/reindex-vault.js'));
 registerTool(require('./tools/register-repo.js'));
 
 const server = new Server(
-  { name: 'cortex-vault', version: '1.3.1' },
+  { name: 'cortex-vault', version: '1.4.0' },
   { capabilities: { tools: {} } }
 );
 
