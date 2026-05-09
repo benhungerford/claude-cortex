@@ -57,7 +57,7 @@ describe('cortex-vault integration', () => {
     assert.equal(initResponse.result.serverInfo.name, 'cortex-vault');
   });
 
-  it('server lists all 13 tools', async () => {
+  it('server lists all 14 tools', async () => {
     const proc = spawn('node', [SERVER_PATH], { stdio: ['pipe', 'pipe', 'pipe'] });
 
     sendMessage(proc, {
@@ -93,6 +93,6 @@ describe('cortex-vault integration', () => {
     assert.ok(toolsResponse, 'expected response with id:2');
     assert.ok(toolsResponse.result, 'expected result in tools/list response');
     assert.ok(Array.isArray(toolsResponse.result.tools), 'expected tools to be an array');
-    assert.equal(toolsResponse.result.tools.length, 13, `expected 13 tools, got ${toolsResponse.result.tools.length}`);
+    assert.equal(toolsResponse.result.tools.length, 14, `expected 14 tools, got ${toolsResponse.result.tools.length}`);
   });
 });

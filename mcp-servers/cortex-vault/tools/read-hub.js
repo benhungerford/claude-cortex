@@ -2,7 +2,7 @@
 
 const path = require('node:path');
 const fs = require('node:fs');
-const { getVaultPath } = require('../lib/vault-path.js');
+const { getVaultPath, resolveInsideVault, VaultPathError } = require('../lib/vault-path.js');
 const { readFile } = require('../lib/file-ops.js');
 const { extractFrontmatter } = require('../lib/yaml.js');
 
@@ -72,7 +72,18 @@ async function handler(args, vaultOverride) {
     };
   }
 
-  const fullDirPath = path.join(vault, project_path);
+  let fullDirPath;
+  try {
+    fullDirPath = resolveInsideVault(vault, project_path);
+  } catch (err) {
+    if (err instanceof VaultPathError) {
+      return {
+        content: [{ type: 'text', text: `Invalid project_path: ${err.message}` }],
+        isError: true
+      };
+    }
+    throw err;
+  }
   const contextFileName = findProjectContextFile(fullDirPath);
 
   if (!contextFileName) {

@@ -1,11 +1,17 @@
 'use strict';
 
-const path = require('node:path');
 const { getVaultPath } = require('../lib/vault-path.js');
-const { readFile } = require('../lib/file-ops.js');
+const { loadRegistry, findProjectByCwd } = require('../lib/registry.js');
 
 async function handler(args, vaultOverride) {
   const { cwd } = args;
+
+  if (typeof cwd !== 'string' || cwd.length === 0) {
+    return {
+      content: [{ type: 'text', text: 'cwd is required (non-empty string).' }],
+      isError: true
+    };
+  }
 
   const vault = vaultOverride || getVaultPath();
   if (!vault) {
@@ -15,55 +21,19 @@ async function handler(args, vaultOverride) {
     };
   }
 
-  const registryPath = path.join(vault, '_repo_registry.json');
-  const raw = readFile(registryPath);
-  if (raw === null) {
-    return {
-      content: [{ type: 'text', text: JSON.stringify(null) }]
-    };
-  }
-
   let registry;
   try {
-    registry = JSON.parse(raw);
-  } catch {
+    registry = loadRegistry(vault);
+  } catch (err) {
     return {
-      content: [{ type: 'text', text: 'Failed to parse _repo_registry.json.' }],
+      content: [{ type: 'text', text: `Failed to parse registry: ${err.message}` }],
       isError: true
     };
   }
 
-  if (!Array.isArray(registry)) {
-    return {
-      content: [{ type: 'text', text: JSON.stringify(null) }]
-    };
-  }
-
-  // Normalize cwd to ensure consistent path separators
-  const normalizedCwd = path.normalize(cwd);
-
-  // Walk up from cwd, checking each directory against registry entries
-  let current = normalizedCwd;
-  while (true) {
-    const match = registry.find(
-      (entry) => path.normalize(entry.repo_path) === current
-    );
-    if (match) {
-      return {
-        content: [{ type: 'text', text: JSON.stringify(match, null, 2) }]
-      };
-    }
-
-    const parent = path.dirname(current);
-    if (parent === current) {
-      // Reached filesystem root without a match
-      break;
-    }
-    current = parent;
-  }
-
+  const match = findProjectByCwd(registry, cwd);
   return {
-    content: [{ type: 'text', text: JSON.stringify(null) }]
+    content: [{ type: 'text', text: JSON.stringify(match, null, 2) }]
   };
 }
 

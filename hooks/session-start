@@ -33,16 +33,12 @@ if [[ -z "$BOOT_JSON" ]]; then
     exit 0
 fi
 
-# ── Cache reference files ───────────────────────────────────────────────────
+# ── Cache vault path for other hooks ────────────────────────────────────────
+# (Reference files in references/*.md are read directly by skills; user-prompt-submit
+# uses hardcoded patterns. No reason to mirror them into plugin-data.)
 
 CACHE_DIR="$PLUGIN_DATA/session-cache"
 mkdir -p "$CACHE_DIR"
-
-for src in "trigger-phrases.md:trigger-phrases.txt" "capture-rules.md:capture-rules.txt"; do
-    src_file="$PLUGIN_ROOT/references/${src%%:*}"
-    dst_file="$CACHE_DIR/${src##*:}"
-    [[ -f "$src_file" ]] && cp "$src_file" "$dst_file"
-done
 
 # Cache vault path for other hooks
 python3 -c "import json,sys; print(json.loads(sys.stdin.read())['vault_path'], end='')" \
@@ -55,6 +51,14 @@ import json, sys
 
 data = json.loads(sys.stdin.read())
 lines = []
+lines.append('<cortex-boot-required>')
+lines.append('EXTREMELY IMPORTANT: A <cortex-session> block is loaded below. Before responding to the FIRST user message of this session, and before invoking any other skill, you MUST invoke the cortex-boot skill (via the Skill tool) to interpret it.')
+lines.append('')
+lines.append('This is not negotiable. Skipping cortex-boot causes wrong-project answers, broken status checks, and missed activation-level behavior.')
+lines.append('')
+lines.append('After cortex-boot has run once in this session, do NOT re-invoke it on subsequent turns — the activation-level contract it applied stays in effect for the whole session.')
+lines.append('</cortex-boot-required>')
+lines.append('')
 lines.append('<cortex-session>')
 lines.append(f\"Vault: {data['vault_path']}\")
 

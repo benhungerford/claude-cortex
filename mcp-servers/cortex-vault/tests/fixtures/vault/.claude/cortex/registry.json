@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "projects": [
+    {
+      "id": "test-project",
+      "vault_path": "Work/TBL/Test Client/Test Project",
+      "context_file": "Test Project — Project Context.md",
+      "repo_paths": ["/Users/test/code/test-project"]
+    }
+  ]
+}

@@ -2,7 +2,7 @@
 
 const path = require('node:path');
 const fs = require('node:fs');
-const { getVaultPath } = require('../lib/vault-path.js');
+const { getVaultPath, resolveInsideVault, VaultPathError } = require('../lib/vault-path.js');
 const { readFile, writeFile } = require('../lib/file-ops.js');
 
 // Match YYYY-MM-DD <Title>.md
@@ -138,9 +138,26 @@ async function handler(args, vaultOverride) {
     };
   }
 
-  const notesDirAbs = path.isAbsolute(notes_dir)
-    ? notes_dir
-    : path.join(vault, notes_dir);
+  let notesDirAbs;
+  try {
+    notesDirAbs = resolveInsideVault(vault, notes_dir);
+  } catch (err) {
+    if (err instanceof VaultPathError) {
+      return {
+        content: [{ type: 'text', text: `Invalid notes_dir: ${err.message}` }],
+        isError: true
+      };
+    }
+    throw err;
+  }
+
+  // new_file must be a basename, not a path. Reject any directory components.
+  if (typeof new_file !== 'string' || new_file.includes('/') || new_file.includes('\\') || new_file === '..' || new_file === '.') {
+    return {
+      content: [{ type: 'text', text: `new_file must be a bare filename (no directory components): "${new_file}"` }],
+      isError: true
+    };
+  }
 
   // Parse the new file
   const newParsed = parseMeetingFile(new_file);

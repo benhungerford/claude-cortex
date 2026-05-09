@@ -69,7 +69,10 @@ describe('append_changelog', () => {
     );
 
     assert.equal(result.isError, true, 'should be an error');
-    assert.ok(result.content[0].text.includes('Invalid action'), 'error should mention invalid action');
+    assert.ok(
+      result.content[0].text.toLowerCase().includes('invalid'),
+      'error should mention invalid action'
+    );
   });
 });
 
@@ -191,9 +194,9 @@ describe('find_project_by_cwd', () => {
     assert.equal(result.isError, undefined, 'should not be an error');
     const data = JSON.parse(result.content[0].text);
     assert.ok(data !== null, 'should find a match');
-    assert.equal(data.project, 'Test Project');
-    assert.equal(data.client, 'Test Client');
+    assert.equal(data.id, 'test-project');
     assert.equal(data.vault_path, 'Work/TBL/Test Client/Test Project');
+    assert.ok(Array.isArray(data.repo_paths) && data.repo_paths.includes('/Users/test/code/test-project'));
   });
 
   test('finds project from a subdirectory', async () => {
@@ -205,7 +208,7 @@ describe('find_project_by_cwd', () => {
     assert.equal(result.isError, undefined, 'should not be an error');
     const data = JSON.parse(result.content[0].text);
     assert.ok(data !== null, 'should find a match by walking up');
-    assert.equal(data.project, 'Test Project');
+    assert.equal(data.id, 'test-project');
   });
 
   test('returns null for unregistered path', async () => {

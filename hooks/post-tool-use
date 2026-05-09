@@ -11,6 +11,14 @@ set -euo pipefail
 PLUGIN_DATA="${CLAUDE_PLUGIN_DATA:-$HOME/.claude/cortex/plugin-data}"
 CONFIG_FILE="$HOME/.claude/cortex/config.json"
 
+# python3 is required to parse the stdin JSON payload. If it's missing, exit
+# silently — the plugin still works for non-vault sessions but auto-changelog
+# logging and re-embedding are unavailable on this platform.
+if ! command -v python3 &>/dev/null; then
+    printf '{}\n'
+    exit 0
+fi
+
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 escape_for_json() {
@@ -164,13 +172,24 @@ case "$REL_PATH" in
         ;;
 esac
 
-# ── Step 8: Append to _changelog.txt ────────────────────────────────────────
+# ── Step 8: Append to _changelog.txt via shared Node helper ─────────────────
+# All changelog writers (MCP tools, this hook, reindex-one) go through
+# lib/changelog-format.js so the line shape stays in lockstep. If `node` is
+# missing, fall back to the inline format — slightly drift-prone but keeps
+# the hook from going dark on systems without Node on PATH.
 
-CHANGELOG="$VAULT_PATH/_changelog.txt"
-TIMESTAMP="$(date '+%Y-%m-%d %H:%M')"
-ENTRY="[$TIMESTAMP] $ACTION [auto] | FILE: $FILENAME | DEST: $REL_DIR | NOTE: Auto-logged by hook${KB_SOURCE}"
+PLUGIN_ROOT_FOR_CLI="${CLAUDE_PLUGIN_ROOT:-${CURSOR_PLUGIN_ROOT:-}}"
+APPEND_CLI="$PLUGIN_ROOT_FOR_CLI/mcp-servers/cortex-vault/bin/append-changelog-cli.js"
+NOTE_TEXT="Auto-logged by hook${KB_SOURCE}"
 
-echo "$ENTRY" >> "$CHANGELOG"
+if [[ -n "$PLUGIN_ROOT_FOR_CLI" && -f "$APPEND_CLI" ]] && command -v node &>/dev/null; then
+    node "$APPEND_CLI" "$VAULT_PATH" "$ACTION" "$FILENAME" "$REL_DIR" "$NOTE_TEXT" --automated >/dev/null 2>&1 || true
+else
+    CHANGELOG="$VAULT_PATH/_changelog.txt"
+    TIMESTAMP="$(date '+%Y-%m-%d %H:%M')"
+    ENTRY="[$TIMESTAMP] $ACTION [auto] | FILE: $FILENAME | DEST: $REL_DIR | NOTE: $NOTE_TEXT"
+    echo "$ENTRY" >> "$CHANGELOG"
+fi
 
 # ── Step 8b: Re-index .md file into semantic search (background, silent) ─────
 

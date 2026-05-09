@@ -3,35 +3,10 @@
 const path = require('node:path');
 const { getVaultPath } = require('../lib/vault-path.js');
 const { appendFile } = require('../lib/file-ops.js');
-
-const VALID_ACTIONS = [
-  'CREATED', 'MOVED', 'RENAMED', 'TAGGED', 'UPDATED', 'LINKED',
-  'PULLED', 'ARCHIVED', 'SKIPPED', 'UNKNOWN', 'MEMORY_UPDATED',
-  'MOC_UPDATED', 'STATUS_CHANGED'
-];
-
-function formatTimestamp(date) {
-  const pad = (n) => String(n).padStart(2, '0');
-  const y = date.getFullYear();
-  const m = pad(date.getMonth() + 1);
-  const d = pad(date.getDate());
-  const h = pad(date.getHours());
-  const min = pad(date.getMinutes());
-  return `${y}-${m}-${d} ${h}:${min}`;
-}
+const { VALID_ACTIONS, formatChangelogEntry } = require('../lib/changelog-format.js');
 
 async function handler(args, vaultOverride) {
-  const { action, file, dest, note } = args;
-
-  if (!VALID_ACTIONS.includes(action)) {
-    return {
-      content: [{
-        type: 'text',
-        text: `Invalid action "${action}". Must be one of: ${VALID_ACTIONS.join(', ')}`
-      }],
-      isError: true
-    };
-  }
+  const { action, file, dest, note, automated = false } = args;
 
   const vault = vaultOverride || getVaultPath();
   if (!vault) {
@@ -41,8 +16,15 @@ async function handler(args, vaultOverride) {
     };
   }
 
-  const timestamp = formatTimestamp(new Date());
-  const entry = `[${timestamp}] ${action} | FILE: ${file} | DEST: ${dest} | NOTE: ${note}`;
+  let entry;
+  try {
+    entry = formatChangelogEntry({ action, file, dest, note, automated });
+  } catch (err) {
+    return {
+      content: [{ type: 'text', text: err.message }],
+      isError: true
+    };
+  }
 
   const changelogPath = path.join(vault, '_changelog.txt');
   appendFile(changelogPath, entry);
@@ -74,6 +56,11 @@ module.exports = {
       note: {
         type: 'string',
         description: 'Human-readable context for the log entry.'
+      },
+      automated: {
+        type: 'boolean',
+        description: 'If true, tag the entry as [auto] (hook-driven, not skill-captured). Defaults to false.',
+        default: false
       }
     },
     required: ['action', 'file', 'dest', 'note']

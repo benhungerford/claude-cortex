@@ -282,6 +282,24 @@ run_boot_test "dormant feature detection" "" \
 # Restore normal changelog
 echo "" > "$TEST_VAULT/_changelog.txt"
 
+# Test: token budget — large memory gets truncated when budget is small
+python3 -c "
+import sys
+# Generate ~20k chars of memory
+content = ('memory line padded to ~80 chars per line ' * 250)
+print(content)
+" > "$TEST_VAULT/memory.md"
+
+run_boot_test "token budget truncates oversized memory" "--budget-chars 2000 --memory-cap 1000" \
+    "'_budget' in data and 'memory' in data['_budget']['truncated']"
+
+# Test: budget=0 disables truncation entirely
+run_boot_test "token budget=0 disables gate" "--budget-chars 0 --memory-cap 1000" \
+    "'_budget' not in data"
+
+# Restore normal memory
+echo "# Vault Memory" > "$TEST_VAULT/memory.md"
+
 echo
 echo "session-start (v2 integration):"
 
@@ -292,7 +310,7 @@ v2_output=$(cd "$TEST_REPO" && HOME="/tmp" \
     bash "$REPO_ROOT/hooks/session-start" 2>/dev/null || echo "HOOK_ERROR")
 
 v2_pass=true
-for pattern in "cortex-session" "Level: L3" "cortex-personality" "cortex-memory" "Test Project"; do
+for pattern in "cortex-boot-required" "MUST invoke the cortex-boot skill" "cortex-session" "Level: L3" "cortex-personality" "cortex-memory" "Test Project"; do
     if ! echo "$v2_output" | grep -q "$pattern"; then
         echo "  FAIL: L3 session block — missing '$pattern'"
         echo "    Got: $(echo "$v2_output" | head -5)"
@@ -306,12 +324,19 @@ if $v2_pass; then
     PASS=$((PASS + 1))
 fi
 
-# Test 10: Capture-rules cached
-if [[ -f "$CLAUDE_PLUGIN_DATA/session-cache/capture-rules.txt" ]]; then
-    echo "  PASS: capture-rules cached"
-    PASS=$((PASS + 1))
+# Test 10: vault-path is cached for downstream hooks (replaces the v1.x
+# capture-rules/trigger-phrases caching that was removed in the refactor).
+if [[ -f "$CLAUDE_PLUGIN_DATA/session-cache/vault-path.txt" ]]; then
+    cached_vault="$(cat "$CLAUDE_PLUGIN_DATA/session-cache/vault-path.txt")"
+    if [[ "$cached_vault" == "$TEST_VAULT" ]]; then
+        echo "  PASS: vault-path cached"
+        PASS=$((PASS + 1))
+    else
+        echo "  FAIL: vault-path cached (wrong path: $cached_vault)"
+        FAIL=$((FAIL + 1))
+    fi
 else
-    echo "  FAIL: capture-rules cached (file missing)"
+    echo "  FAIL: vault-path cached (file missing)"
     FAIL=$((FAIL + 1))
 fi
 

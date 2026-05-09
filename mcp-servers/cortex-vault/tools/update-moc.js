@@ -1,7 +1,7 @@
 'use strict';
 
 const path = require('node:path');
-const { getVaultPath } = require('../lib/vault-path.js');
+const { getVaultPath, resolveInsideVault, VaultPathError } = require('../lib/vault-path.js');
 const { readFile, writeFile } = require('../lib/file-ops.js');
 const { extractFrontmatter, stringifyYaml } = require('../lib/yaml.js');
 
@@ -60,7 +60,18 @@ async function handler(args, vaultOverride) {
     };
   }
 
-  const fullPath = path.join(vault, moc_path);
+  let fullPath;
+  try {
+    fullPath = resolveInsideVault(vault, moc_path);
+  } catch (err) {
+    if (err instanceof VaultPathError) {
+      return {
+        content: [{ type: 'text', text: `Invalid moc_path: ${err.message}` }],
+        isError: true
+      };
+    }
+    throw err;
+  }
   const content = readFile(fullPath);
   if (content === null) {
     return {

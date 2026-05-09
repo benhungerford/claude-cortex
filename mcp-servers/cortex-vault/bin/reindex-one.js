@@ -27,7 +27,14 @@ async function main() {
   } catch (err) {
     process.stderr.write(`reindex-one failed: ${err.message}\n`);
     try {
-      const logLine = `[${new Date().toISOString().slice(0, 16).replace('T', ' ')}] INDEX_FAILED [auto] | FILE: ${path.basename(relPath)} | DEST: ${path.dirname(relPath)}/ | NOTE: ${err.message}\n`;
+      const { formatChangelogEntry } = require('../lib/changelog-format.js');
+      const logLine = formatChangelogEntry({
+        action: 'INDEX_FAILED',
+        file: path.basename(relPath),
+        dest: `${path.dirname(relPath)}/`,
+        note: err.message,
+        automated: true
+      }) + '\n';
       fs.appendFileSync(path.join(vaultPath, '_changelog.txt'), logLine);
     } catch {
       // swallow

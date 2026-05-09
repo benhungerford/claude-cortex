@@ -28,6 +28,7 @@ registerTool(require('./tools/open-question.js'));
 registerTool(require('./tools/search-vault.js'));
 registerTool(require('./tools/recall-related.js'));
 registerTool(require('./tools/reindex-vault.js'));
+registerTool(require('./tools/register-repo.js'));
 
 const server = new Server(
   { name: 'cortex-vault', version: '1.3.1' },

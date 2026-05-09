@@ -1,9 +1,19 @@
 'use strict';
 
 const path = require('node:path');
-const { getVaultPath } = require('../lib/vault-path.js');
+const { getVaultPath, resolveInsideVault, VaultPathError } = require('../lib/vault-path.js');
 const { writeFile, appendFile, ensureDir, fileExists } = require('../lib/file-ops.js');
+
+// Reject names that would escape the vault when embedded in a path.
+function isUnsafePathSegment(s) {
+  if (typeof s !== 'string' || s.length === 0) return true;
+  if (s.includes('/') || s.includes('\\')) return true;
+  if (s === '.' || s === '..') return true;
+  if (s.includes('\0')) return true;
+  return false;
+}
 const { stringifyYaml } = require('../lib/yaml.js');
+const { formatChangelogEntry } = require('../lib/changelog-format.js');
 
 function todayISO() {
   const d = new Date();
@@ -11,23 +21,12 @@ function todayISO() {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-function formatTimestamp(date) {
-  const pad = (n) => String(n).padStart(2, '0');
-  const y = date.getFullYear();
-  const m = pad(date.getMonth() + 1);
-  const d = pad(date.getDate());
-  const h = pad(date.getHours());
-  const min = pad(date.getMinutes());
-  return `${y}-${m}-${d} ${h}:${min}`;
-}
-
 function yamlBlock(data) {
   return `---\n${stringifyYaml(data).trimEnd()}\n---\n`;
 }
 
 function logEntry(vault, file, dest, note) {
-  const timestamp = formatTimestamp(new Date());
-  const entry = `[${timestamp}] CREATED | FILE: ${file} | DEST: ${dest} | NOTE: ${note}`;
+  const entry = formatChangelogEntry({ action: 'CREATED', file, dest, note });
   appendFile(path.join(vault, '_changelog.txt'), entry);
 }
 
@@ -45,6 +44,22 @@ async function handler(args, vaultOverride) {
   if (!vault) {
     return {
       content: [{ type: 'text', text: 'Vault path not configured.' }],
+      isError: true
+    };
+  }
+
+  // Reject inputs that would let scaffold paths escape the vault.
+  for (const [field, value] of [['client', client], ['project', project], ['category', category]]) {
+    if (isUnsafePathSegment(value)) {
+      return {
+        content: [{ type: 'text', text: `Invalid ${field}: must not contain path separators or "..".` }],
+        isError: true
+      };
+    }
+  }
+  if (brand !== undefined && isUnsafePathSegment(brand)) {
+    return {
+      content: [{ type: 'text', text: `Invalid brand: must not contain path separators or "..".` }],
       isError: true
     };
   }
