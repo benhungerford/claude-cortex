@@ -59,7 +59,7 @@ See `references/activation-levels.md` for the full specification. Summary:
 |---|---|
 | **L1** | Say nothing. Answer the user's question directly. Watch for capture signals silently. |
 | **L2** | Say nothing, unless a stale blocker or urgent inbox item is worth surfacing — one line max. |
-| **L3** | One opening line: project name, stage, blocker count. Example: `FKT Shopify Website Build — Integrations stage. 2 open blockers. Ready.` |
+| **L3** | One opening line: project name, stage, blocker count. Example: `FKT Shopify Website Build — Integrations stage. 2 open blockers. Ready.` Append a one-time capture hint to this opener: `(say 'log that' to capture decisions)`. Show it only on the first L3 opener of the session — it tells the user the explicit path, because at L3 inferred captures confirm before writing (see `references/activation-levels.md`, The L3 Inferred-Capture Rule). |
 
 **Step 4 — Queue dormant-feature suggestion.**
 
@@ -83,8 +83,9 @@ Rules:
 - At most **one** `recall_related` call per user turn. Do not chain calls.
 - Use `limit: 5`.
 - Pass the path of any file currently being edited in `exclude_paths` so you don't recall it.
-- Only surface results that have `score > 0.5`. Everything below that is noise.
-- Surface relevant hits in one short line before answering — e.g. `Worth knowing: you've already documented this pattern in [[_MOC]] and [[ywPortal SSO]].` Never dump the full result set.
+- **At L3, scope the recall to the active project.** Pass `scope` = the active project's `vault_path` (the same path the session block resolved the L3 project to). This keeps hits relevant to the project the user is heads-down in, rather than surfacing semantically-similar notes from unrelated projects. At L1/L2 leave `scope` unset (recall across the whole vault). This is a relevance refinement, not an access boundary — the vault is single-user, so every note is the user's own either way.
+- **Only surface results at or above the tool's relevance floor (`min_score`, default `0.55`).** Everything below is noise. The `recall_related` tool enforces this floor server-side, so low-score hits are filtered before they reach you. `0.55` is empirically where genuine matches separate from near-orthogonal noise for this embedding model (see FINDINGS T07); at L3 especially, prefer a quiet recall over a loose one, and raise `min_score` if you want a stricter bar.
+- **Carry project attribution into the surfaced line.** Each result may include a project label (derived from the note's first path segment). When a hit comes from a project, name it: `Worth knowing (FKT): you've already documented this pattern in [[ywPortal SSO]].` For unscoped/cross-vault hits this makes it clear which project the note belongs to. Never dump the full result set.
 - If no results clear the threshold, say nothing about the recall.
 - Skip this step entirely for trivial turns (pleasantries, yes/no confirmations, quick factual questions).
 
@@ -137,10 +138,10 @@ User's first message: "morning, let's pick up where we left off"
 
 Step 1: Block present.
 Step 2: Level = L3.
-Step 3: Opening line:
+Step 3: Opening line (with the one-time L3 capture hint):
   "FKT Shopify Website Build — Integrations stage. 2 open blockers:
   Stripe sandbox credentials and sandbox access (expiring Fri). What
-  are we tackling?"
+  are we tackling? (say 'log that' to capture decisions)"
 Step 4: No feature suggestion.
 Step 5: Done. User drives from here.
 ```

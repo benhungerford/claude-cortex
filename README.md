@@ -147,7 +147,9 @@ As of v1.3.0, Cortex ships with local semantic search over your vault.
 
 **What it does:** finds notes by meaning, not just keywords. A query for "checkout abandonment" will surface notes talking about "cart drop-off" — even if they share no words.
 
-**How it works:** Cortex embeds each `.md` note into a 384-dimensional vector using the `all-MiniLM-L6-v2` model (runs locally in Node via `@huggingface/transformers`). Vectors live in a SQLite + `sqlite-vec` database at `{your vault}/.cortex/search.db`. No API key, no cloud, no data leaves your machine.
+**How it works:** Cortex embeds each `.md` note into a 384-dimensional vector using the `all-MiniLM-L6-v2` model (runs locally in Node via `@huggingface/transformers`). Vectors live in a SQLite + `sqlite-vec` database at `{your vault}/.cortex/search.db`. No API key, no cloud, no vault data ever leaves your machine.
+
+**Truly offline embedding.** The model is loaded only from a bundled local directory (`mcp-servers/cortex-vault/models/`) with remote model fetching disabled (`env.allowRemoteModels = false`), so embedding makes **no outbound network call** at runtime. The ~86 MB ONNX weight is not committed to git (too large); it ships with the packaged plugin / is populated at setup time per [`models/README.md`](mcp-servers/cortex-vault/models/README.md). If the weight is absent, semantic search fails fast with a clear, actionable message rather than silently reaching out to the network. Likewise, the MCP server will **not** run `npm install` during a session without your consent — if dependencies are missing it tells you how to install them (or set `CORTEX_ALLOW_NPM_INSTALL=1` to opt in).
 
 **Two modes:**
 

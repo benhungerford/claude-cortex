@@ -193,8 +193,18 @@ cortex-boot's capture watch detects a Tier 1 signal: scope change.
 Change type: scope change (removal).
 Route to: Hub + Changelog.md.
 
-Step 3-6 proceed normally. Hub's Scope section updated to note "wholesale
-  portal moved to phase 2, confirmed by Ashley 2026-04-08". Changelog logged.
+L3 Inferred-Capture check (see activation-levels.md / capture-rules.md):
+  This is an INFERRED signal at L3 — the user did not use an explicit
+  trigger phrase. At L3, inferred Tier 1 signals confirm before writing.
+  So first surface a one-line confirm:
+    "Log that the wholesale portal moved out of scope to phase 2 for FKT? (y)"
+  (Had the user said "log that" or "we decided", this would be an EXPLICIT
+  trigger and would proceed silently with no confirm. At L1/L2, inferred
+  signals also proceed silently — the confirm step is L3-only.)
+
+On confirmation, Steps 3-6 proceed normally. Hub's Scope section updated to
+  note "wholesale portal moved to phase 2, confirmed by Ashley 2026-04-08".
+  Changelog logged.
 
 Step 9: Announce tight:
   "Updated FKT: wholesale portal moved out of scope (phase 2). Logged."

@@ -58,15 +58,71 @@ CONFIDENCE=""
 TRIGGER_DESC=""
 
 # ── 3a: Hard-route structural signals (transcript detection) ────────────────
-# 20+ lines AND 3+ lines matching "Name: text" speaker-label pattern
+# Detect a pasted transcript by speaker-label structure, handling real export
+# formats — Granola (**Name:**), Fathom ([HH:MM] Name:), multi-word names
+# (First Last:), and bracket/dash forms — while rejecting bibliography/metadata
+# pastes (Author:/Title:/DOI:) that share the "Key: value" shape.
+#
+# Rules:
+#   • 20+ total lines.
+#   • Speaker lines must be a meaningful share of the paste (>=25% density),
+#     not just 3 lines buried in a 200-line document.
+#   • A metadata-key denylist (Author/Title/DOI/Year/Journal/…) kills
+#     bibliography/citation false positives even at high speaker counts.
+#   • A temporal marker ([HH:MM] timestamps) → high confidence, hard route.
+#     A raw paste with no temporal marker → medium confidence, so the skill
+#     asks "file this as a meeting, or just context?" rather than hard-routing.
 if [[ -z "$SKILL" ]]; then
-    LINE_COUNT="$(printf '%s' "$USER_PROMPT" | wc -l | tr -d ' ')"
+    # grep -c prints "0" AND exits non-zero on no match, so a naive
+    # `grep -c ... || echo 0` yields the two-line string "0\n0" and breaks
+    # arithmetic. Sanitize every count to a single clean integer with tr -dc.
+    LINE_COUNT="$(printf '%s' "$USER_PROMPT" | grep -c '' 2>/dev/null | head -1 | tr -dc '0-9' || true)"
+    LINE_COUNT="${LINE_COUNT:-0}"
     if [[ "$LINE_COUNT" -ge 20 ]]; then
-        SPEAKER_COUNT="$(printf '%s' "$USER_PROMPT" | grep -cE '^[A-Za-z]+: ' 2>/dev/null || echo 0)"
-        if [[ "$SPEAKER_COUNT" -ge 3 ]]; then
+        # Speaker-label lines. Matches, after optional leading whitespace:
+        #   Name:            (single or multi-word, dots/hyphens/apostrophes)
+        #   **Name:**        (Granola bold)
+        #   [00:01] Name:    (Fathom timestamp prefix)
+        #   - Name:          (bullet/dash prefix)
+        #   00:01 Name:      (bare timestamp prefix)
+        # The name body is 1–40 chars of letters/space/.'- so a label like
+        # "Ben Hungerford:" matches but a full prose sentence ending in ":"
+        # does not (length-capped, no digits/long runs).
+        SPEAKER_RE='^[[:space:]]*([-*]+[[:space:]]*)?(\[[0-9]{1,2}:[0-9]{2}(:[0-9]{2})?\][[:space:]]*|[0-9]{1,2}:[0-9]{2}(:[0-9]{2})?[[:space:]]+)?(\*\*)?[A-Za-z][A-Za-z .'\''-]{0,39}:(\*\*)?([[:space:]]|$)'
+        SPEAKER_COUNT="$(printf '%s' "$USER_PROMPT" | grep -icE "$SPEAKER_RE" 2>/dev/null | head -1 | tr -dc '0-9' || true)"
+        SPEAKER_COUNT="${SPEAKER_COUNT:-0}"
+
+        # Metadata-key denylist: bibliography/citation pastes use these as
+        # "Key:" labels and must NOT route to meeting filing.
+        META_RE='^[[:space:]]*(\*\*)?(author|title|doi|year|journal|publisher|isbn|issn|volume|issue|pages|editor|edition|url|abstract|keywords|citation|source)(\*\*)?[[:space:]]*:'
+        META_COUNT="$(printf '%s' "$USER_PROMPT" | grep -icE "$META_RE" 2>/dev/null | head -1 | tr -dc '0-9' || true)"
+        META_COUNT="${META_COUNT:-0}"
+
+        # Temporal marker → real meeting transcript (timestamped turns).
+        TEMPORAL_COUNT="$(printf '%s' "$USER_PROMPT" | grep -cE '(\[[0-9]{1,2}:[0-9]{2})|(^[[:space:]]*[0-9]{1,2}:[0-9]{2}[[:space:]])' 2>/dev/null | head -1 | tr -dc '0-9' || true)"
+        TEMPORAL_COUNT="${TEMPORAL_COUNT:-0}"
+
+        # Density: speaker lines as a share of total lines (integer percent).
+        DENSITY=0
+        if [[ "$LINE_COUNT" -gt 0 ]]; then
+            DENSITY=$(( SPEAKER_COUNT * 100 / LINE_COUNT ))
+        fi
+
+        # Bibliography guard: if metadata keys are a real presence (>=2) and
+        # there is no temporal marker, treat as a citation/quote paste, not a
+        # transcript — do not route.
+        if [[ "$SPEAKER_COUNT" -ge 3 && "$DENSITY" -ge 25 ]] \
+           && ! { [[ "$META_COUNT" -ge 2 && "$TEMPORAL_COUNT" -eq 0 ]]; }; then
             SKILL="cortex-process-meeting"
-            CONFIDENCE="high"
-            TRIGGER_DESC="transcript structure detected"
+            if [[ "$TEMPORAL_COUNT" -ge 1 ]]; then
+                CONFIDENCE="high"
+                TRIGGER_DESC="timestamped transcript structure detected"
+            else
+                # No temporal marker — could be a transcript or just pasted
+                # context. Route at medium so the skill confirms intent.
+                CONFIDENCE="medium"
+                TRIGGER_DESC="speaker-labeled paste (no timestamps) — confirm: file or just context?"
+            fi
         fi
     fi
 fi

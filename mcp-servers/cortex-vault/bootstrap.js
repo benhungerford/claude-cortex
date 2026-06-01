@@ -11,10 +11,17 @@
 // and the MCP client silently fails to connect — leaving the plugin's slash
 // commands and ambient recall useless until the user manually runs npm install.
 //
-// This wrapper runs a fast integrity check on node_modules/ and, if anything is
-// missing, runs npm install synchronously before loading server.js. On every
-// subsequent launch (when deps are present) the check is a few fs.existsSync
-// calls — effectively free.
+// This wrapper runs a fast integrity check on node_modules/. On every launch
+// where deps are already present (the normal case) the check is a few
+// fs.existsSync calls — effectively free.
+//
+// W2.8 — consent for network installs. A user session must never silently make
+// outbound network calls. Running `npm install` automatically here pulls code
+// from the npm registry without the user's knowledge, contradicting Cortex's
+// offline/"no data leaves your machine" promise. So we do NOT auto-install by
+// default: if deps are missing we fail fast with a clear, actionable message.
+// The install is only performed when the user has explicitly opted in via
+// CORTEX_ALLOW_NPM_INSTALL=1 (e.g. a documented first-run/setup step).
 
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
@@ -24,6 +31,11 @@ const HERE = __dirname;
 
 function log(msg) {
   process.stderr.write(`[cortex-vault] ${msg}\n`);
+}
+
+function consentGranted() {
+  const v = process.env.CORTEX_ALLOW_NPM_INSTALL;
+  return v === '1' || v === 'true' || v === 'yes';
 }
 
 function install() {
@@ -44,8 +56,20 @@ function install() {
   log('Dependencies installed. Starting server…');
 }
 
+function failMissingDeps() {
+  log('MCP server dependencies are not installed — cortex-vault tools are unavailable.');
+  log('Cortex will not run a network install during a session without your consent.');
+  log('To install once, run:  cd ' + HERE + ' && npm install');
+  log('(Or set CORTEX_ALLOW_NPM_INSTALL=1 to allow this wrapper to install on launch.)');
+  process.exit(1);
+}
+
 if (needsInstall(HERE)) {
-  install();
+  if (consentGranted()) {
+    install();
+  } else {
+    failMissingDeps();
+  }
 }
 
 // Hand off to the real server in-process. Because MCP uses stdio transport,

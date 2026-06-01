@@ -154,6 +154,13 @@ echo "user-prompt-submit:"
 run_test "detects meeting" "user-prompt-submit" "user-prompt-submit-meeting.json" "cortex-process-meeting"
 run_test "detects status query" "user-prompt-submit" "user-prompt-submit-status.json" "cortex-check-status"
 run_test_empty "no match returns empty" "user-prompt-submit" "user-prompt-submit-no-match.json"
+# W2.9 — transcript detection: a Granola-style **Name:** paste (no timestamps)
+# routes to meeting at medium confidence (skill confirms file vs context).
+run_test "Granola transcript routes to meeting" "user-prompt-submit" "user-prompt-submit-transcript-granola.json" "cortex-process-meeting"
+run_test "Granola transcript is medium confidence (no timestamps)" "user-prompt-submit" "user-prompt-submit-transcript-granola.json" "confidence: medium"
+# W2.9 — a bibliography/citation paste (Author:/Title:/DOI:) shares the "Key:"
+# shape but must NOT hard-route to meeting filing.
+run_test_empty "bibliography paste does NOT route to meeting" "user-prompt-submit" "user-prompt-submit-bibliography.json"
 
 echo
 echo "stop:"

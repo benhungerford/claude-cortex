@@ -385,6 +385,61 @@ describe('scaffold_project', () => {
     assert.ok(contents.includes('CREATED'), 'changelog should have CREATED entries');
     assert.ok(contents.includes('Logged Project'), 'changelog should mention the project name');
   });
+
+  // --- W2.10: persona-agnostic scaffold -----------------------------------
+  // category is freeform (driven by personality.md buckets), not a hardcoded
+  // ['Personal','TBL'] enum, so a non-Ben vault can use its own bucket terms.
+
+  test('scaffolds a non-default (freeform) bucket category', async () => {
+    const result = await tool.handler(
+      { client: 'Acme Co', project: 'Migration', category: 'Consulting' },
+      tmpVault
+    );
+
+    assert.equal(result.isError, undefined, 'a freeform category must not error');
+
+    const projectBase = path.join(tmpVault, 'Work/Consulting/Acme Co/Migration');
+    assert.ok(fs.existsSync(path.join(projectBase, '_MOC.md')), 'project _MOC.md should exist under the freeform category');
+    assert.ok(fs.existsSync(path.join(projectBase, 'Migration — Project Context.md')), 'Project Context should exist');
+
+    const data = JSON.parse(result.content[0].text);
+    assert.equal(data.category, 'Consulting', 'returned category should echo the freeform value');
+    assert.equal(data.project_path, 'Work/Consulting/Acme Co/Migration', 'path should use the freeform category');
+  });
+
+  test('honours a custom bucket_root for non-Ben vault trees', async () => {
+    const result = await tool.handler(
+      { client: 'Acme Co', project: 'Site', category: 'Clients', bucket_root: 'Engagements' },
+      tmpVault
+    );
+
+    assert.equal(result.isError, undefined, 'a custom bucket_root must not error');
+
+    const projectBase = path.join(tmpVault, 'Engagements/Clients/Acme Co/Site');
+    assert.ok(fs.existsSync(path.join(projectBase, '_MOC.md')), 'project should scaffold under the custom bucket_root');
+    assert.ok(!fs.existsSync(path.join(tmpVault, 'Work/Clients/Acme Co/Site')), 'must not fall back to the hardcoded Work/ root');
+  });
+
+  test('brand layer is generic — works for any category, not just Personal', async () => {
+    const result = await tool.handler(
+      { client: 'Studio X', project: 'App', category: 'Freelance', brand: 'NovaLine' },
+      tmpVault
+    );
+
+    assert.equal(result.isError, undefined, 'brand layer under a non-Personal category must not error');
+
+    const projectBase = path.join(tmpVault, 'Work/Freelance/Studio X/NovaLine/App');
+    assert.ok(fs.existsSync(path.join(projectBase, '_MOC.md')), 'brand layer should apply regardless of category name');
+  });
+
+  test('rejects an unsafe bucket_root segment', async () => {
+    const result = await tool.handler(
+      { client: 'Acme Co', project: 'Site', category: 'Clients', bucket_root: '../escape' },
+      tmpVault
+    );
+
+    assert.equal(result.isError, true, 'unsafe bucket_root must be rejected by path-safety guard');
+  });
 });
 
 // ---------------------------------------------------------------------------

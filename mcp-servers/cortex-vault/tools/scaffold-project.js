@@ -39,6 +39,10 @@ async function handler(args, vaultOverride) {
     brand,
     status = 'Planning',
     domain,
+    // Top-level vault folder that holds the bucket categories. Defaults to
+    // "Work" (Ben's tree) but is overridable so non-Ben vaults can use their
+    // own top-level term from personality.md (e.g. "Engagements", "Clients").
+    bucket_root = 'Work',
   } = args;
 
   const vault = vaultOverride || getVaultPath();
@@ -50,7 +54,8 @@ async function handler(args, vaultOverride) {
   }
 
   // Reject inputs that would let scaffold paths escape the vault.
-  for (const [field, value] of [['client', client], ['project', project], ['category', category]]) {
+  // bucket_root, category, client, and project all become path segments.
+  for (const [field, value] of [['bucket_root', bucket_root], ['client', client], ['project', project], ['category', category]]) {
     if (isUnsafePathSegment(value)) {
       return {
         content: [{ type: 'text', text: `Invalid ${field}: must not contain path separators or "..".` }],
@@ -68,19 +73,16 @@ async function handler(args, vaultOverride) {
   const today = todayISO();
   const created = [];
 
-  // Build paths
-  // Personal projects: Work/Personal/<client>/<brand>/<project>/
-  // TBL projects:      Work/TBL/<client>/<project>/
-  let clientRelPath;
-  let projectRelPath;
-
-  if (category === 'Personal' && brand) {
-    clientRelPath = `Work/Personal/${client}`;
-    projectRelPath = `Work/Personal/${client}/${brand}/${project}`;
-  } else {
-    clientRelPath = `Work/${category}/${client}`;
-    projectRelPath = `Work/${category}/${client}/${project}`;
-  }
+  // Build paths.
+  //   <bucket_root>/<category>/<client>/<project>/
+  // and, when a brand layer is supplied, it is inserted generically:
+  //   <bucket_root>/<category>/<client>/<brand>/<project>/
+  // bucket_root and category are persona-driven (from personality.md buckets),
+  // not hardcoded to "Work" / "Personal" / "TBL".
+  const clientRelPath = `${bucket_root}/${category}/${client}`;
+  const projectRelPath = brand
+    ? `${clientRelPath}/${brand}/${project}`
+    : `${clientRelPath}/${project}`;
 
   const clientAbsPath = path.join(vault, clientRelPath);
   const projectAbsPath = path.join(vault, projectRelPath);
@@ -283,12 +285,16 @@ module.exports = {
       },
       category: {
         type: 'string',
-        enum: ['Personal', 'TBL'],
-        description: 'Work category: Personal for freelance/personal, TBL for The Brand Leader employer clients.'
+        description: 'Bucket category — a freeform term taken from the user\'s personality.md buckets (e.g. "TBL", "Personal", "Consulting", "Clients"). Not a fixed enum; defaults in a standard TBL vault are TBL and Personal, but any vault\'s own bucket terms are valid.'
+      },
+      bucket_root: {
+        type: 'string',
+        description: 'Top-level vault folder that holds the bucket categories. Defaults to "Work". Override to match a non-default vault tree (e.g. "Engagements").',
+        default: 'Work'
       },
       brand: {
         type: 'string',
-        description: 'Brand or product layer for Personal/Ben Hungerford projects (e.g. "Claude Cortex"). Omit for non-Ben Personal clients.'
+        description: 'Optional brand or product layer inserted between client and project (e.g. "Claude Cortex"). Applies to any category. Omit when there is no brand layer.'
       },
       status: {
         type: 'string',
@@ -297,7 +303,7 @@ module.exports = {
       },
       domain: {
         type: 'string',
-        description: 'Optional domain tag value (e.g. "shopify", "wordpress"). Added as #domain/<value> tag.'
+        description: 'Optional user-defined domain tag value (e.g. "shopify", "wordpress", "research", "coaching"). Added as #domain/<value> tag. The taxonomy is whatever the user defines in personality.md — not a fixed list.'
       }
     },
     required: ['client', 'project', 'category']

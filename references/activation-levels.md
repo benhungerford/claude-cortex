@@ -50,6 +50,14 @@ Loaded by `cortex-boot` at session start and referenced by every skill that need
 - **Default: read-only against the vault.** Explicit user confirmation is required before writing from a repo-context session. Rationale: inside a repo, the user is writing code and we don't want Cortex accidentally filing debugging chatter into the vault.
 - Exception to read-only: when the user uses an explicit trigger phrase ("log this", "we decided", etc.) — those override the read-only default.
 
+**The L3 Inferred-Capture Rule.** Reconciles the L3 read-only default with the Tier 1 "always capture silently" rule (`capture-rules.md`):
+- **Explicit triggers proceed as Tier 1 and write.** When the user uses a trigger phrase ("log that", "we decided", "new blocker"), the captured intent is unambiguous — write it silently with the one-line confirmation, exactly as Tier 1 specifies.
+- **Inferred Tier 1 signals confirm before writing.** When Cortex *infers* a Tier 1 signal at L3 — a decision, scope change, or blocker it picked up ambiently without the user asking to log it — it does **not** write silently. It surfaces a one-line confirm first: `Log that wholesale portal moved out of scope to FKT? (y)`. Write only on confirmation. Rationale: at L3 the user is heads-down in a repo, and an inferred write they didn't ask for is more likely to be debugging chatter than a real decision.
+
+(At L1/L2, inferred Tier 1 signals still capture silently per `capture-rules.md` — this confirm step is L3-only.)
+
+On the first L3 session opener, append a one-time hint so the user knows the explicit path: `(say 'log that' to capture decisions)`.
+
 **Example:** User opens a Claude Code session in `~/Documents/Freelance Projects/fkt-checkout/`. `cortex-boot` walks cwd up, matches the repo to the FKT project in the registry, reads the hub, and opens the session with: "FKT — Shopify Website Build. Current stage: Integrations. 2 open blockers: Stripe credentials, sandbox access. Anything I can help with?"
 
 ---

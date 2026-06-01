@@ -13,6 +13,7 @@ import argparse
 import json
 import os
 import re
+import subprocess
 import sys
 
 
@@ -39,6 +40,21 @@ def read_config_budget(config_path):
     val = config.get("budget_chars")
     return val if isinstance(val, int) else None
 
+
+def read_config_default_project(config_path):
+    """Read optional default_project (a registry project id) from config.json.
+
+    Set during onboarding or via /set-default-project. Lets shell-less or
+    cwd-less sessions (Cowork Desktop, iPad) escalate to at least L2 instead of
+    being stuck at L1 all day with no project anchor. Returns str or None.
+    """
+    try:
+        with open(config_path, encoding="utf-8") as f:
+            config = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    val = config.get("default_project")
+    return val if isinstance(val, str) and val else None
 
 
 def read_personality(vault_path):
@@ -129,40 +145,163 @@ def read_registry(vault_path):
         return {"schema_version": 1, "projects": []}
 
 
-def resolve_cwd(vault_path, cwd, registry):
+# ── Path normalization (KEEP IN SYNC with mcp-servers/cortex-vault/lib/registry.js) ──
+# Both the Python boot resolver and the Node MCP resolver must compare repo
+# paths the SAME way, or a repo opened via a symlink/worktree resolves to L3 in
+# one and L1 in the other. The shared rule: realpath() when the path exists
+# (collapses symlinks + ".."), else fall back to a plain absolute-normalized
+# form so non-existent registry entries still compare deterministically. The
+# JS side mirrors this in `safeRealpath` / `normalizePath` — edit both together.
+def normalize_path(p):
+    """realpath when it exists, else abspath+normpath. Mirror of registry.js."""
+    if not p:
+        return p
+    try:
+        return os.path.realpath(p)
+    except OSError:
+        return os.path.normpath(os.path.abspath(p))
+
+
+def _match_registry(projects, candidate):
+    """Return the project whose repo_paths contains `candidate`, else None."""
+    for project in projects:
+        for repo_path in project.get("repo_paths", []):
+            if normalize_path(repo_path) == candidate:
+                return project
+    return None
+
+
+def _walk_up_match(projects, start, home):
+    """Walk up from `start`, returning the first registry-matched project."""
+    candidate = start
+    while candidate and candidate != os.path.dirname(candidate):
+        match = _match_registry(projects, candidate)
+        if match:
+            return match
+        parent = os.path.dirname(candidate)
+        if candidate == home or parent == candidate:
+            break
+        candidate = parent
+    return None
+
+
+def resolve_git_main_worktree(cwd):
+    """If cwd is inside a linked git worktree, return its MAIN worktree root.
+
+    A linked worktree's `git rev-parse --git-common-dir` points at the main
+    repo's `.git` directory; its parent is the main worktree root. Returns the
+    normalized main-root path, or None when cwd is not in a git repo / git is
+    unavailable / cwd already is the main worktree.
+    """
+    try:
+        out = subprocess.run(
+            ["git", "rev-parse", "--git-common-dir"],
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if out.returncode != 0:
+        return None
+    common_dir = out.stdout.strip()
+    if not common_dir:
+        return None
+    if not os.path.isabs(common_dir):
+        common_dir = os.path.join(cwd, common_dir)
+    # common_dir is the main repo's `.git`; its parent is the main worktree root.
+    main_root = os.path.dirname(os.path.normpath(common_dir))
+    main_root = normalize_path(main_root)
+    if main_root == normalize_path(cwd):
+        return None  # already the main worktree; nothing new to try
+    return main_root
+
+
+def resolve_cwd(vault_path, cwd, registry, default_project=None):
     """Resolve cwd to an activation level and optional project entry.
 
     Returns (level: int, project_entry: dict | None).
-    Level 3 = cwd matches a registered repo.
-    Level 2 = cwd is inside the vault.
+    Level 3 = cwd matches a registered repo (directly, via symlink, or via a
+              git worktree whose main root is registered).
+    Level 2 = cwd is inside the vault, OR a default_project is configured.
     Level 1 = neither.
     """
-    cwd_real = os.path.realpath(cwd)
-    vault_real = os.path.realpath(vault_path)
+    cwd_real = normalize_path(cwd)
+    vault_real = normalize_path(vault_path)
     is_inside_vault = (
         cwd_real == vault_real or cwd_real.startswith(vault_real + os.sep)
     )
 
-    # Walk up from cwd, check each candidate against registry repo_paths
-    home = os.path.expanduser("~")
-    candidate = cwd_real
+    home = normalize_path(os.path.expanduser("~"))
     projects = registry.get("projects", [])
 
-    while candidate and candidate != os.path.dirname(candidate):
-        for project in projects:
-            for repo_path in project.get("repo_paths", []):
-                if os.path.realpath(repo_path) == candidate:
-                    return 3, project
-        parent = os.path.dirname(candidate)
-        # Stop at home directory or root
-        if candidate == home or parent == candidate:
-            break
-        candidate = parent
+    # 1. Exact walk-up match from cwd.
+    match = _walk_up_match(projects, cwd_real, home)
+    if match:
+        return 3, match
+
+    # 2. Exact walk-up failed — if cwd is in a linked git worktree, retry from
+    #    the MAIN worktree root (which is what register-repo stores).
+    main_root = resolve_git_main_worktree(cwd_real)
+    if main_root:
+        match = _walk_up_match(projects, main_root, home)
+        if match:
+            return 3, match
 
     if is_inside_vault:
         return 2, None
 
+    # 3. No cwd match and not inside the vault. If a default_project is set
+    #    (Desktop/iPad with no meaningful cwd), anchor to it at L2 so the
+    #    session isn't stuck at L1 with no project context.
+    if default_project:
+        for project in projects:
+            if project.get("id") == default_project:
+                return 2, project
+
     return 1, None
+
+
+def detect_nearby_cortex(cwd):
+    """Warn when L1 is computed but a Cortex stub / vault marker sits nearby.
+
+    Helps users self-diagnose the common "why am I stuck at L1 in my repo?"
+    case — usually an unregistered repo that already carries a Cortex stub
+    CLAUDE.md, or a vault marker. Returns a one-line warning string or None.
+    """
+    try:
+        cwd_real = normalize_path(cwd)
+    except Exception:
+        return None
+    candidate = cwd_real
+    home = normalize_path(os.path.expanduser("~"))
+    depth = 0
+    while candidate and candidate != os.path.dirname(candidate) and depth < 6:
+        claude_md = os.path.join(candidate, "CLAUDE.md")
+        if os.path.isfile(claude_md):
+            try:
+                with open(claude_md, encoding="utf-8") as f:
+                    head = f.read(600)
+                if "cortex" in head.lower():
+                    return (
+                        "L1 computed, but a Cortex stub CLAUDE.md was found nearby "
+                        "— this repo may not be registered. Run /cortex-register-repo "
+                        "to link it for L3 context."
+                    )
+            except (OSError, UnicodeDecodeError):
+                pass
+        if os.path.isdir(os.path.join(candidate, ".claude", "cortex")):
+            return (
+                "L1 computed, but a Cortex vault marker was found nearby. "
+                "Run /cortex-register-repo to link this repo for full context."
+            )
+        parent = os.path.dirname(candidate)
+        if candidate == home or parent == candidate:
+            break
+        candidate = parent
+        depth += 1
+    return None
 
 
 def parse_hub(vault_path, project_entry):
@@ -434,7 +573,16 @@ def main():
 
     # Resolve cwd to activation level
     registry = read_registry(vault_path)
-    activation_level, project_entry = resolve_cwd(vault_path, args.cwd, registry)
+    default_project = read_config_default_project(args.config)
+    activation_level, project_entry = resolve_cwd(
+        vault_path, args.cwd, registry, default_project=default_project
+    )
+
+    # Self-diagnosis: if we landed at L1 but a Cortex stub/vault sits nearby,
+    # surface a one-line warning so the user can register the repo.
+    activation_warning = None
+    if activation_level == 1:
+        activation_warning = detect_nearby_cortex(args.cwd)
 
     # Parse hub for L3 sessions
     project = None
@@ -445,6 +593,15 @@ def main():
             "name": derive_project_name(project_entry),
             "vault_path": project_entry["vault_path"],
             **(hub_data or {"stage": None, "blockers": [], "open_questions": [], "recent_decisions": []}),
+        }
+    elif activation_level == 2 and project_entry:
+        # L2 via default_project: surface the anchor's identity without the full
+        # L3 hub parse (keeps L2 cheap and preserves the L3 read contract).
+        project = {
+            "id": project_entry["id"],
+            "name": derive_project_name(project_entry),
+            "vault_path": project_entry["vault_path"],
+            "default": True,
         }
 
     # Check dormant features
@@ -464,6 +621,7 @@ def main():
         "active_projects": active_projects,
         "project": project,
         "feature_suggestion": feature_suggestion,
+        "activation_warning": activation_warning,
     }
 
     # Resolve budget: CLI flag wins; else config budget_chars; else default.

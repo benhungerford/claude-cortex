@@ -1,0 +1,6 @@
+# The all-MiniLM-L6-v2 ONNX weights ARE committed here (the plugin bundles them
+# so semantic search works fully offline from first install — a deliberate
+# choice, traded against repo size). Nothing in this directory is ignored.
+#
+# If you regenerate the model, keep the same layout:
+#   Xenova/all-MiniLM-L6-v2/{config.json,tokenizer.json,tokenizer_config.json,onnx/model.onnx}

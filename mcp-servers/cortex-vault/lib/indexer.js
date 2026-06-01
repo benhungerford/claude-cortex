@@ -67,6 +67,33 @@ function toPosix(p) {
   return p.split(path.sep).join('/');
 }
 
+// W2.3 — attribution. Derive a coarse "project" label from a vault-relative
+// path: the first non-empty path segment (e.g. "Work/FKT/auth.md" -> "Work",
+// "FKT/auth.md" -> "FKT"). Used to tag recall/search results so hints can read
+// "Worth knowing (FKT): [[...]]". Returns '' for top-level files.
+function projectSegment(relPath) {
+  if (!relPath || typeof relPath !== 'string') return '';
+  const parts = toPosix(relPath).split('/').filter(Boolean);
+  return parts.length > 1 ? parts[0] : '';
+}
+
+// W2.3 — scope filter. A result is in-scope when its path is under any of the
+// include_paths prefixes (vault-relative, '/'-normalized). Empty includes ⇒
+// everything is in scope. Prefix match is segment-aware so "Work" does not
+// match "Workshop".
+function buildScopeMatcher(includePaths) {
+  const prefixes = (Array.isArray(includePaths) ? includePaths : [])
+    .map((p) => toPosix(String(p)).replace(/^\/+|\/+$/g, ''))
+    .filter(Boolean);
+  if (prefixes.length === 0) return () => true;
+  return (relPath) => {
+    const norm = toPosix(String(relPath));
+    return prefixes.some(
+      (pre) => norm === pre || norm.startsWith(pre + '/')
+    );
+  };
+}
+
 async function upsertNote(db, vaultPath, relPath, stat, content) {
   const { frontmatter, body } = parseFrontmatter(content);
   const title = extractTitle(frontmatter, body, relPath);
@@ -184,4 +211,13 @@ async function indexOne(vaultPath, relPath) {
   }
 }
 
-module.exports = { indexVault, indexOne, isExcludedPath, parseFrontmatter, extractTitle };
+module.exports = {
+  indexVault,
+  indexOne,
+  isExcludedPath,
+  parseFrontmatter,
+  extractTitle,
+  projectSegment,
+  buildScopeMatcher,
+  toPosix
+};

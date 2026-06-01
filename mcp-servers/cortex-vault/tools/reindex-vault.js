@@ -12,7 +12,17 @@ async function handler(args, vaultOverride) {
     };
   }
 
-  const result = await indexVault(vault);
+  // W2.2 — stream progress to stderr so a large rebuild isn't silent. MCP
+  // stdout is the protocol channel, so progress must go to stderr only.
+  let n = 0;
+  const result = await indexVault(vault, {
+    onProgress: ({ file, status }) => {
+      n += 1;
+      if (status === 'indexed' && (n <= 5 || n % 25 === 0)) {
+        process.stderr.write(`[cortex-vault] reindex: ${n} processed (latest: ${file})\n`);
+      }
+    }
+  });
 
   const summary = {
     vault,
