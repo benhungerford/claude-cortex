@@ -552,8 +552,8 @@ describe('list_projects', () => {
     assert.equal(p.project, 'Test Project', 'project name should match');
     assert.equal(p.client, 'Test Client', 'client should match');
     assert.equal(p.status, 'Active Build', 'status should match');
-    assert.equal(p.open_questions, 2, 'should count 2 open questions');
-    assert.equal(p.blockers, 0, 'should count 0 blockers (no Blockers section)');
+    assert.equal(p.open_questions, 2, 'should count 2 open questions (Type Question, Open)');
+    assert.equal(p.blockers, 1, 'should count 1 blocker (Type Dependency, Open); resolved row excluded');
     assert.ok('updated' in p, 'should have updated field');
     assert.ok('path' in p, 'should have path field');
   });
@@ -603,7 +603,7 @@ describe('open_question', () => {
 
     const contextPath = path.join(tmpVault, 'Work/TBL/Test Client/Test Project/Test Project — Project Context.md');
     const contents = fs.readFileSync(contextPath, 'utf8');
-    assert.ok(contents.includes('- [ ] What CDN should we use?'), 'new question should appear unchecked');
+    assert.match(contents, /\|\s*\d+\s*\|\s*What CDN should we use\?\s*\|.*\|\s*Open\s*\|/, 'new question should appear as an Open pipe-table row');
   });
 
   test('resolves an existing question by substring match', async () => {
@@ -621,9 +621,11 @@ describe('open_question', () => {
 
     const contextPath = path.join(tmpVault, 'Work/TBL/Test Client/Test Project/Test Project — Project Context.md');
     const contents = fs.readFileSync(contextPath, 'utf8');
-    assert.ok(!contents.includes('- [ ] How should we handle the API integration?'), 'question should no longer be unchecked');
-    assert.ok(contents.includes('- [x]'), 'resolved question should be checked');
-    assert.ok(contents.includes('Using REST API with OAuth2'), 'resolution text should appear');
+    assert.ok(!contents.includes('How should we handle the API integration?'), 'resolved row should be removed entirely');
+    assert.ok(!contents.includes('[x]'), 'no strikethrough/checked rows left behind');
+    // Resolution is recorded in the changelog, not left in the hub.
+    const changelog = fs.readFileSync(path.join(tmpVault, '_changelog.txt'), 'utf8');
+    assert.ok(changelog.includes('Using REST API with OAuth2'), 'resolution text should be logged to the changelog');
   });
 
   test('returns error when resolving without resolution text', async () => {

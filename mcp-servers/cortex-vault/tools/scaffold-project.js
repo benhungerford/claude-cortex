@@ -3,6 +3,7 @@
 const path = require('node:path');
 const { getVaultPath, resolveInsideVault, VaultPathError } = require('../lib/vault-path.js');
 const { writeFile, appendFile, ensureDir, fileExists } = require('../lib/file-ops.js');
+const { emptyTable } = require('../lib/hub-schema.js');
 
 // Reject names that would escape the vault when embedded in a path.
 function isUnsafePathSegment(s) {
@@ -177,9 +178,8 @@ async function handler(args, vaultOverride) {
     `\n# ${project} — Project Context\n\n` +
     `## Overview\n\n\n` +
     `## Current Phase\n\n\n` +
-    `## Open Questions\n\n\n` +
     `## Key Decisions\n\n\n` +
-    `## Blockers\n\n\n` +
+    `${emptyTable()}\n` +
     `---\n*Related:* [[_MOC]]\n`;
   writeFile(path.join(projectAbsPath, projectContextFile), projectContextContent);
   created.push(`${projectRelPath}/${projectContextFile}`);

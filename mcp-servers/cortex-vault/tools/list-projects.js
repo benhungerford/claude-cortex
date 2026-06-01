@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const { getVaultPath } = require('../lib/vault-path.js');
 const { readFile } = require('../lib/file-ops.js');
 const { extractFrontmatter } = require('../lib/yaml.js');
+const { parseQuestionBlockerRows, classifyRows } = require('../lib/hub-schema.js');
 
 /**
  * Walk Work/ tree and collect all Project Context files.
@@ -38,38 +39,6 @@ function findProjectContextFiles(vaultPath) {
   return results;
 }
 
-/**
- * Extract section content from markdown body (stops at next ## heading).
- */
-function extractSection(body, sectionName) {
-  const lines = body.split('\n');
-  let inSection = false;
-  const sectionLines = [];
-
-  for (const line of lines) {
-    if (line.startsWith('## ')) {
-      if (inSection) break;
-      if (line.trim() === `## ${sectionName}`) {
-        inSection = true;
-        continue;
-      }
-    } else if (inSection) {
-      sectionLines.push(line);
-    }
-  }
-
-  return sectionLines.join('\n');
-}
-
-/**
- * Count unchecked items in a section.
- */
-function countUnchecked(body, sectionName) {
-  const sectionContent = extractSection(body, sectionName);
-  if (!sectionContent) return 0;
-  return (sectionContent.match(/^- \[ \]/gm) || []).length;
-}
-
 const STATUS_ORDER = ['Active Build', 'Planning', 'Ongoing Support', 'Paused', 'Archived'];
 
 async function handler(args, vaultOverride) {
@@ -98,14 +67,15 @@ async function handler(args, vaultOverride) {
     // Apply status filter if provided
     if (status_filter && status !== status_filter) continue;
 
+    const classify = classifyRows(parseQuestionBlockerRows(body));
     projects.push({
       project: frontmatter.project || null,
       client: frontmatter.client || null,
       status,
       updated: frontmatter.updated || null,
       launch: frontmatter.launch || null,
-      open_questions: countUnchecked(body, 'Open Questions'),
-      blockers: countUnchecked(body, 'Blockers'),
+      open_questions: classify.openQuestions.length,
+      blockers: classify.blockers.length,
       path: dirRel
     });
   }

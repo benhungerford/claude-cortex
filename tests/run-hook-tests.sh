@@ -340,6 +340,53 @@ else
     FAIL=$((FAIL + 1))
 fi
 
+# Test 11: hub-schema parser agreement (W1.1).
+# Python parse_hub and JS read_hub must extract the SAME blockers/questions
+# from the same canonical pipe-table hub — the cross-language guard that keeps
+# the two parsers from drifting apart again.
+echo
+echo "hub-schema parser agreement (Python parse_hub == JS read_hub):"
+FIXTURE_VAULT="$REPO_ROOT/mcp-servers/cortex-vault/tests/fixtures/vault"
+MCP_DIR="$REPO_ROOT/mcp-servers/cortex-vault"
+BC_PATH="$REPO_ROOT/hooks/lib/boot-context.py"
+if command -v python3 >/dev/null 2>&1 && command -v node >/dev/null 2>&1; then
+  agree_out="$(python3 - "$FIXTURE_VAULT" "$MCP_DIR" "$BC_PATH" <<'PYEOF'
+import importlib.util, json, subprocess, sys
+vault, mcp_dir, bc_path = sys.argv[1], sys.argv[2], sys.argv[3]
+proj = "Work/TBL/Test Client/Test Project"
+ctx = "Test Project — Project Context.md"
+
+spec = importlib.util.spec_from_file_location("boot_context", bc_path)
+bc = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(bc)
+py = bc.parse_hub(vault, {"vault_path": proj, "context_file": ctx})
+py_set = {"blockers": sorted(py["blockers"]), "open_questions": sorted(py["open_questions"])}
+
+node_src = (
+    "require('./tools/read-hub.js').handler({project_path:process.argv[1]}, process.argv[2])"
+    ".then(r=>{const d=JSON.parse(r.content[0].text);"
+    "console.log(JSON.stringify({blockers:d.blockers.sort(),open_questions:d.open_questions.sort()}));});"
+)
+node = subprocess.run(["node", "-e", node_src, proj, vault], cwd=mcp_dir,
+                      capture_output=True, text=True)
+js_set = json.loads(node.stdout.strip())
+if py_set == js_set and py_set["blockers"]:
+    print("OK " + json.dumps(py_set))
+else:
+    print("MISMATCH py=%s js=%s err=%s" % (json.dumps(py_set), json.dumps(js_set), node.stderr.strip()))
+PYEOF
+)"
+  if [[ "$agree_out" == OK* ]]; then
+    echo "  PASS: parsers agree ($agree_out)"
+    PASS=$((PASS + 1))
+  else
+    echo "  FAIL: parser disagreement — $agree_out"
+    FAIL=$((FAIL + 1))
+  fi
+else
+  echo "  SKIP: python3 or node not available"
+fi
+
 echo
 echo "=== Results: $PASS passed, $FAIL failed ==="
 

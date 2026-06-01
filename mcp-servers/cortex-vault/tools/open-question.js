@@ -6,6 +6,7 @@ const { getVaultPath, resolveInsideVault, VaultPathError } = require('../lib/vau
 const { readFile, writeFile, appendFile } = require('../lib/file-ops.js');
 const { extractFrontmatter, stringifyYaml } = require('../lib/yaml.js');
 const { formatChangelogEntry } = require('../lib/changelog-format.js');
+const { addRow, resolveRow } = require('../lib/hub-schema.js');
 
 function todayDateStr() {
   const now = new Date();
@@ -26,61 +27,14 @@ function findProjectContextFile(dirPath) {
   return match || null;
 }
 
-/**
- * Find or create the "## Open Questions" section and append a new unchecked item.
- */
-function addQuestionToBody(body, text) {
-  const sectionHeader = '## Open Questions';
-  const idx = body.indexOf(sectionHeader);
-
-  if (idx === -1) {
-    // Section doesn't exist — append it at the end (before any footer)
-    const footerIdx = body.lastIndexOf('\n---\n');
-    const newItem = `- [ ] ${text}`;
-    if (footerIdx !== -1) {
-      return (
-        body.slice(0, footerIdx) +
-        `\n\n${sectionHeader}\n\n${newItem}\n` +
-        body.slice(footerIdx)
-      );
-    }
-    const trimmed = body.trimEnd();
-    return `${trimmed}\n\n${sectionHeader}\n\n${newItem}\n`;
-  }
-
-  // Section exists — find its content end (start of next ## section or end of body)
-  const afterHeader = idx + sectionHeader.length;
-  const nextSection = body.indexOf('\n## ', afterHeader);
-  const insertPos = nextSection !== -1 ? nextSection : body.length;
-
-  const beforeInsert = body.slice(0, insertPos).trimEnd();
-  const afterInsert = body.slice(insertPos);
-
-  return `${beforeInsert}\n- [ ] ${text}\n${afterInsert}`;
-}
-
-/**
- * Find a matching unchecked question (case-insensitive substring) and resolve it.
- * Returns the updated body string, or null if no match found.
- */
-function resolveQuestionInBody(body, text, resolution) {
-  const lines = body.split('\n');
-  const searchLower = text.toLowerCase();
-
-  const matchIdx = lines.findIndex(
-    (line) => line.match(/^- \[ \]/) && line.toLowerCase().includes(searchLower)
-  );
-
-  if (matchIdx === -1) return null;
-
-  const originalText = lines[matchIdx].replace(/^- \[ \]\s*/, '');
-  lines[matchIdx] = `- [x] ${originalText} — Resolved: ${resolution}`;
-
-  return lines.join('\n');
-}
+// Hub reads/writes go through the canonical pipe-table (lib/hub-schema.js).
+// add  -> append a new "Open" row to "## Open Questions & Blockers".
+// resolve -> REMOVE the matched row entirely (Blocker-Resolved Rule); the
+//            removed text is logged to the Changelog, never left as a
+//            strikethrough row.
 
 async function handler(args, vaultOverride) {
-  const { project_path, action, text, resolution } = args;
+  const { project_path, action, text, resolution, type, owner } = args;
 
   if (!project_path) {
     return {
@@ -151,18 +105,31 @@ async function handler(args, vaultOverride) {
   const { frontmatter, body } = extractFrontmatter(fileContent);
 
   let newBody;
+  let removedText = null;
 
   if (action === 'add') {
-    newBody = addQuestionToBody(body, text);
+    newBody = addRow(body, { question: text, type: type || 'Question', owner: owner || '' });
   } else {
-    // resolve
-    newBody = resolveQuestionInBody(body, text, resolution);
-    if (newBody === null) {
+    // resolve — remove the row entirely
+    const res = resolveRow(body, text);
+    if (res.notFound) {
       return {
-        content: [{ type: 'text', text: `No matching open question found for: "${text}"` }],
+        content: [{ type: 'text', text: `No matching open question or blocker found for: "${text}"` }],
         isError: true
       };
     }
+    if (res.error === 'ambiguous') {
+      return {
+        content: [{
+          type: 'text',
+          text: `"${text}" matches multiple rows; be more specific. Candidates:\n` +
+            res.candidates.map((c) => `  - ${c}`).join('\n')
+        }],
+        isError: true
+      };
+    }
+    newBody = res.content;
+    removedText = res.removed;
   }
 
   // Bump updated in frontmatter
@@ -178,7 +145,7 @@ async function handler(args, vaultOverride) {
   // Append changelog entry via shared formatter.
   const noteText = action === 'add'
     ? `Added open question: "${text}"`
-    : `Resolved open question matching "${text}": ${resolution}`;
+    : `Resolved & removed "${removedText}": ${resolution}`;
   const entry = formatChangelogEntry({
     action: 'UPDATED',
     file: contextFileName,
@@ -218,11 +185,19 @@ module.exports = {
       },
       text: {
         type: 'string',
-        description: 'The question text (for add) or a substring to match the question (for resolve).'
+        description: 'The question/blocker text (for add) or a substring to match the row (for resolve).'
+      },
+      type: {
+        type: 'string',
+        description: 'Optional (add only): row Type. Dependency/Internal/Unknown classify as blockers; anything else (default "Question") as an open question.'
+      },
+      owner: {
+        type: 'string',
+        description: 'Optional (add only): who owns the question/blocker.'
       },
       resolution: {
         type: 'string',
-        description: 'Required for resolve: the resolution text appended to the question.'
+        description: 'Required for resolve: recorded in the Changelog when the row is removed.'
       }
     },
     required: ['project_path', 'action', 'text']
