@@ -12,3 +12,7 @@ mcp-servers/cortex-vault/node_modules/
 
 # Semantic search index (generated per-vault at runtime)
 .cortex/
+
+# Python bytecode
+__pycache__/
+*.pyc

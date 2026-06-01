@@ -30,14 +30,16 @@ escape_for_json() {
 
 INPUT=$(cat)
 
-USER_PROMPT="$(python3 -c "
+# Pipe the JSON via stdin (not argv) so very long pastes aren't truncated by
+# ARG_MAX. Python reads the whole payload from sys.stdin.
+USER_PROMPT="$(printf '%s' "$INPUT" | python3 -c "
 import json, sys
 try:
-    data = json.loads(sys.argv[1])
+    data = json.loads(sys.stdin.read())
     print(data.get('user_prompt', ''))
 except Exception:
     pass
-" "$INPUT" 2>/dev/null)" || true
+" 2>/dev/null)" || true
 
 # Empty prompt → no match
 if [[ -z "$USER_PROMPT" ]]; then

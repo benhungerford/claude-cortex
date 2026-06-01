@@ -37,8 +37,9 @@ All inputs come from the `<cortex-session>` block already in the conversation co
 
 Look for a `<cortex-session>` block in the conversation context.
 
-- If absent → **hand off to `cortex-onboarding`**. The hook found no config or no vault.
+- If present → use it directly. This is the fast path (the session-start hook already loaded everything).
 - If present but `<cortex-personality>` is empty → proceed with reduced context. Note once: `Cortex loaded without personality data.`
+- If **absent** → the hook did not run. This happens on shell-less / python-less platforms (iPad, some Cowork Desktop) where the bash/python hook can't execute, so no block is injected. **Before** falling back to onboarding, call the `get_boot_context` MCP tool from `cortex-vault`. It returns the same JSON `hooks/lib/boot-context.py` would produce (`vault_path`, `activation_level`, `personality`, `memory`, `recent_activity`, `inbox_count`, `active_projects`, `project`, `feature_suggestion`). Interpret it exactly as you would the block — read `activation_level` (1/2/3) and apply the activation-level contract in Step 3, treat `project` as the L3 context, and queue any `feature_suggestion`. Only if the tool also reports no vault / no personality (an error result) → **hand off to `cortex-onboarding`**.
 
 **Step 2 — Read the activation level.**
 
@@ -103,8 +104,11 @@ Rules:
 ```
 User opens Claude Code. No <cortex-session> block in context.
 
-Step 1: No session block → hand off to cortex-onboarding.
-cortex-boot does nothing visible. cortex-onboarding takes over.
+Step 1: No session block → call get_boot_context (MCP fallback).
+  - Tool returns an error (no vault / no personality) → hand off to
+    cortex-onboarding. cortex-boot does nothing visible.
+  - Tool returns JSON with a vault and personality → interpret it like the
+    block (read activation_level, apply Step 3). Onboarding is NOT triggered.
 ```
 
 ### Example 2 — L1 passive session
@@ -145,7 +149,7 @@ Step 5: Done. User drives from here.
 
 | Failure | What cortex-boot does |
 |---|---|
-| No `<cortex-session>` block in context | Hand off to `cortex-onboarding` with reason "no session context". |
+| No `<cortex-session>` block in context | Call `get_boot_context` (MCP fallback). Interpret its JSON like the block. Only hand off to `cortex-onboarding` if the tool also reports no vault / no personality. |
 | `<cortex-personality>` sub-block is empty | Proceed with reduced context. One-line note: `Cortex loaded without personality data.` |
 | `Level:` line missing or unrecognized | Default to L1. |
 | `<cortex-memory>` sub-block is empty | Proceed normally. Memory is optional. |
@@ -155,5 +159,6 @@ Step 5: Done. User drives from here.
 
 - **Hook:** `hooks/session-start` — produces the `<cortex-session>` block
 - **Python module:** `hooks/lib/boot-context.py` — reads vault files and computes activation level
+- **MCP fallback:** `get_boot_context` (cortex-vault) — pure-JS reproduction of `boot-context.py`'s output, used when no `<cortex-session>` block is present (shell-less / python-less platforms)
 - **References:** `references/activation-levels.md`, `references/capture-rules.md`
 - **Handoff target:** `cortex-onboarding` (when no session block is present)
