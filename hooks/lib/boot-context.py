@@ -29,6 +29,17 @@ def read_config(config_path):
     return vault_path
 
 
+def read_config_budget(config_path):
+    """Read optional budget_chars from config.json. Returns int or None."""
+    try:
+        with open(config_path, encoding="utf-8") as f:
+            config = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    val = config.get("budget_chars")
+    return val if isinstance(val, int) else None
+
+
 
 def read_personality(vault_path):
     """Read personality.md. Returns content string or None if missing."""
@@ -302,12 +313,16 @@ def apply_token_budget(output, budget_chars):
     if budget_chars is None or budget_chars <= 0:
         return  # disabled
 
-    # Fixed-size fields that always count first.
+    # Fixed-size fields that always count first. The bucket list
+    # (active_projects) is the L1/L2 project-name anchor — small and high-value,
+    # so it is RESERVED here and never truncated, instead of competing at the
+    # bottom of the priority list where a large personality.md would starve it.
     fixed_overhead = (
         estimate_chars(output.get("vault_path"))
         + estimate_chars(output.get("activation_level"))
         + estimate_chars(output.get("inbox_count"))
         + estimate_chars(output.get("feature_suggestion"))
+        + estimate_chars(output.get("active_projects"))
         + 200  # JSON keys + delimiters
     )
 
@@ -320,7 +335,6 @@ def apply_token_budget(output, budget_chars):
         ("recent_activity", lambda v: v or ""),
         ("memory", lambda v: v or ""),
         ("learner_profile", lambda v: v or ""),
-        ("active_projects", lambda v: v or ""),
     ]
 
     for key, render in priority:
@@ -334,7 +348,13 @@ def apply_token_budget(output, budget_chars):
         # Doesn't fit. Truncate string fields; stub structured fields.
         if isinstance(value, str):
             kept = max(remaining, 0)
-            output[key] = truncate_text(value, kept)
+            # If almost nothing would survive, drop the field entirely (None)
+            # rather than emitting a content-free "[truncated …]" stub that
+            # session-start would render under a misleading header.
+            if kept < 40:
+                output[key] = None
+            else:
+                output[key] = truncate_text(value, kept)
             truncated_fields.append(key)
             remaining = 0
         elif isinstance(value, dict):
@@ -386,11 +406,12 @@ def main():
     parser.add_argument(
         "--budget-chars",
         type=int,
-        default=DEFAULT_BUDGET_CHARS,
+        default=None,
         help=(
             "Soft ceiling on session-block size in characters (~4 chars/token). "
             "Sections are filled in priority order and overflow is truncated. "
-            "Pass 0 to disable."
+            "Pass 0 to disable. Overrides the optional budget_chars config key; "
+            "if neither is set, defaults to ~8000."
         ),
     )
     args = parser.parse_args()
@@ -445,8 +466,15 @@ def main():
         "feature_suggestion": feature_suggestion,
     }
 
+    # Resolve budget: CLI flag wins; else config budget_chars; else default.
+    budget_chars = args.budget_chars
+    if budget_chars is None:
+        budget_chars = read_config_budget(args.config)
+    if budget_chars is None:
+        budget_chars = DEFAULT_BUDGET_CHARS
+
     # Apply token budget last so it acts on final assembled state.
-    apply_token_budget(output, args.budget_chars)
+    apply_token_budget(output, budget_chars)
 
     json.dump(output, sys.stdout)
 

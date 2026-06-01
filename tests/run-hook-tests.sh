@@ -387,6 +387,21 @@ else
   echo "  SKIP: python3 or node not available"
 fi
 
+# Test 12: boot-context token-budget behavior (W1.4).
+echo
+echo "boot-context token budget (W1.4):"
+if command -v python3 >/dev/null 2>&1; then
+  if python3 "$REPO_ROOT/tests/test_boot_budget.py" >/dev/null 2>&1; then
+    echo "  PASS: budget reserves bucket list, drops overflow cleanly, signals truncation"
+    PASS=$((PASS + 1))
+  else
+    echo "  FAIL: boot budget tests"
+    FAIL=$((FAIL + 1))
+  fi
+else
+  echo "  SKIP: python3 not available"
+fi
+
 echo
 echo "=== Results: $PASS passed, $FAIL failed ==="
 

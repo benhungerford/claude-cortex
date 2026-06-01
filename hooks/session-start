@@ -107,6 +107,10 @@ lines.append(f\"Inbox: {data.get('inbox_count', 0)} unsorted item(s)\")
 if data.get('feature_suggestion'):
     lines.append(f\"Feature suggestion: {data['feature_suggestion']}\")
 
+b = data.get('_budget')
+if b and b.get('truncated'):
+    lines.append(f\"Context budget: {len(b['truncated'])} field(s) trimmed ({', '.join(b['truncated'])}) — ask 'read hub' or 'search vault' for full detail.\")
+
 lines.append('</cortex-session>')
 print('\n'.join(lines))
 " <<< "$BOOT_JSON")"
