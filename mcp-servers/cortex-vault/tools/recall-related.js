@@ -9,8 +9,17 @@ const { embedWithTimeout, MAX_CHARS } = require('../lib/embeddings.js');
 const {
   parseFrontmatter,
   projectSegment,
-  buildScopeMatcher
+  buildScopeMatcher,
+  indexVault
 } = require('../lib/indexer.js');
+
+// Self-heal opt-out. On hookless surfaces (e.g. Cowork, where the post-tool-use
+// re-embed hook never fires) the index would otherwise drift; strict users who
+// want zero implicit work can disable the auto-reindex with this env var.
+function autoReindexDisabled() {
+  const v = process.env.CORTEX_NO_AUTO_REINDEX;
+  return v === '1' || v === 'true' || v === 'yes';
+}
 
 const STOPWORDS = new Set([
   'the','and','for','with','that','this','from','into','your','have','been','are','but',
@@ -156,6 +165,23 @@ async function handler(args, vaultOverride) {
       };
     }
 
+    // Self-heal a stale index before querying. On hookless surfaces (Cowork,
+    // iPad) the post-tool-use re-embed hook never fires, so the index drifts as
+    // notes are edited. The freshness gate above is cheap (one stat of
+    // _changelog.txt vs MAX(updated)); when it reports staleness we run the
+    // INCREMENTAL indexer, which hash-skips unchanged notes and embeds only the
+    // delta — so recall reflects recent edits without a manual /cortex-index.
+    // Best-effort: a reindex failure must never break recall.
+    let healed = false;
+    if (freshness.stale && !autoReindexDisabled()) {
+      try {
+        await indexVault(vault);
+        healed = true;
+      } catch (e) {
+        process.stderr.write(`[cortex-vault] auto-reindex skipped: ${e.message}\n`);
+      }
+    }
+
     // Fetch extra so scope/score/exclude filtering doesn't starve k.
     const fetchK = Math.min(50, k + exclude_paths.length + includePaths.length + 10);
     const rows = db
@@ -188,7 +214,9 @@ async function handler(args, vaultOverride) {
       min_score: minScore
     };
     if (includePaths.length > 0) payload.scope = includePaths;
-    if (freshness.stale) {
+    if (healed) {
+      payload.index_refreshed = true;
+    } else if (freshness.stale) {
       payload.index_stale = true;
       payload.note = 'Semantic index may be stale — run /cortex-index to refresh.';
     }

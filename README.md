@@ -32,7 +32,7 @@ claude-cortex/
 │   ├── user-prompt-submit   # route trigger phrases to skills
 │   └── stop                 # flush pending memory on session end
 ├── mcp-servers/
-│   └── cortex-vault/        # 13-tool MCP server (conventions + semantic search)
+│   └── cortex-vault/        # 16-tool MCP server (conventions + semantic search)
 ├── workflows/               # detailed playbooks for skill internals
 ├── references/              # convention guides, trigger phrases, activation levels
 ├── scripts/
@@ -137,7 +137,7 @@ Cortex is designed to be extended. To add custom skills — like a sprint planne
 
 Cortex will walk you through the details and create a companion plugin that works alongside the core. Your extensions live in their own plugin, so Cortex updates never overwrite your customizations.
 
-Custom skills get full access to Cortex's 13 MCP tools, vault conventions, and activation levels. See `skills/cortex-extend/SKILL.md` for the full extension guide.
+Custom skills get full access to Cortex's 16 MCP tools, vault conventions, and activation levels. See `skills/cortex-extend/SKILL.md` for the full extension guide.
 
 ---
 
@@ -149,7 +149,9 @@ As of v1.3.0, Cortex ships with local semantic search over your vault.
 
 **How it works:** Cortex embeds each `.md` note into a 384-dimensional vector using the `all-MiniLM-L6-v2` model (runs locally in Node via `@huggingface/transformers`). Vectors live in a SQLite + `sqlite-vec` database at `{your vault}/.cortex/search.db`. No API key, no cloud, no vault data ever leaves your machine.
 
-**Truly offline embedding.** The model is loaded only from a bundled local directory (`mcp-servers/cortex-vault/models/`) with remote model fetching disabled (`env.allowRemoteModels = false`), so embedding makes **no outbound network call** at runtime. The ~86 MB ONNX weight is not committed to git (too large); it ships with the packaged plugin / is populated at setup time per [`models/README.md`](mcp-servers/cortex-vault/models/README.md). If the weight is absent, semantic search fails fast with a clear, actionable message rather than silently reaching out to the network. Likewise, the MCP server will **not** run `npm install` during a session without your consent — if dependencies are missing it tells you how to install them (or set `CORTEX_ALLOW_NPM_INSTALL=1` to opt in).
+**Truly offline embedding.** The model is loaded only from a bundled local directory (`mcp-servers/cortex-vault/models/`) with remote model fetching disabled (`env.allowRemoteModels = false`), so embedding makes **no outbound network call** at runtime. The ~86 MB ONNX weight **is committed to git** and ships with the plugin, so semantic search works fully offline from first install — no setup download, no API key, no vault data ever leaves your machine.
+
+**MCP dependencies install automatically.** `node_modules` is not shipped in a marketplace install, so on first launch the MCP server's bootstrap wrapper auto-installs its dependencies (announced on stderr, ~30–60s the first time). This pulls only public npm packages and sends **no vault data** anywhere — it does not affect the offline-embedding guarantee above. This makes the MCP tools reliable even in no-terminal surfaces like Cowork, where you can't run `npm install` by hand. Strict-offline users who never want an outbound call can set `CORTEX_SKIP_NPM_INSTALL=1`; the server then fails fast with manual install instructions instead of reaching the network.
 
 **Two modes:**
 
@@ -186,7 +188,9 @@ For Claude Desktop, use `scripts/install-desktop.sh` to mirror the plugin into t
 - **v1.1.0** — Boot pipeline rewrite, zero-read cortex-boot, no-permission L1, cortex-extend skill
 - **v1.2.0** — `cortex-coach` adaptive skill development coaching, learner profiles, 3 coaching workflows, auto-update support
 - **v1.3.0** — Semantic search + ambient recall: local embeddings, vector index at `{vault}/.cortex/search.db`, `search_vault` / `recall_related` / `reindex_vault` MCP tools, `/cortex-index` slash command, auto re-embed hook
-- **v1.3.1** — Auto-install MCP dependencies on launch: bootstrap wrapper verifies `node_modules` and runs `npm install` if needed, so MCP tools keep working across plugin cache refreshes
+- **v1.3.1** — Bootstrap wrapper verifies `node_modules` on launch and installs missing MCP dependencies, so the tools keep working across plugin cache refreshes and no-terminal installs. The install is announced (never silent) and sends no vault data; set `CORTEX_SKIP_NPM_INSTALL=1` to opt out.
+- **v1.4.0** — Onboarding rewrite (adaptive tone register, 50+ compliance regimes, multi-axis schema, three build modes, accessibility); path-traversal guards on MCP tools; registry reconciliation with `register_repo` MCP tool; changelog write chokepoint. MCP tool count now 16.
+- **v1.4.1** — Cowork / hookless-surface reliability: MCP deps auto-install on launch (opt out `CORTEX_SKIP_NPM_INSTALL=1`); `recall_related` / `search_vault` self-heal a stale index (opt out `CORTEX_NO_AUTO_REINDEX=1`); `cortex-boot` hookless-surface maintenance contract; README/doc-drift corrections.
 
 ---
 

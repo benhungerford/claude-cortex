@@ -9,10 +9,19 @@ const { embed } = require('../lib/embeddings.js');
 const {
   parseFrontmatter,
   projectSegment,
-  buildScopeMatcher
+  buildScopeMatcher,
+  indexVault
 } = require('../lib/indexer.js');
 
 const SNIPPET_LEN = 200;
+
+// Self-heal opt-out — mirrors recall_related. On hookless surfaces (Cowork,
+// iPad) the post-tool-use re-embed hook never fires, so search self-heals a
+// stale index; strict users can disable it with this env var.
+function autoReindexDisabled() {
+  const v = process.env.CORTEX_NO_AUTO_REINDEX;
+  return v === '1' || v === 'true' || v === 'yes';
+}
 
 // W2.3 — explicit search keeps a lower floor than ambient recall: the user
 // asked, so we tolerate weaker matches. Still server-side-enforced.
@@ -92,6 +101,19 @@ async function handler(args, vaultOverride) {
       };
     }
 
+    // Self-heal a stale index before querying (see recall_related for the full
+    // rationale). The incremental indexer hash-skips unchanged notes, so this is
+    // cheap and keeps explicit search current on hookless surfaces. Best-effort.
+    let healed = false;
+    if (freshness.stale && !autoReindexDisabled()) {
+      try {
+        await indexVault(vault);
+        healed = true;
+      } catch (e) {
+        process.stderr.write(`[cortex-vault] auto-reindex skipped: ${e.message}\n`);
+      }
+    }
+
     // Fetch extra so scope/score filtering doesn't starve k.
     const fetchK = Math.min(50, k + includePaths.length + 10);
     const rows = db
@@ -118,7 +140,9 @@ async function handler(args, vaultOverride) {
 
     const payload = { query, count: results.length, results, min_score: minScore };
     if (includePaths.length > 0) payload.scope = includePaths;
-    if (freshness.stale) {
+    if (healed) {
+      payload.index_refreshed = true;
+    } else if (freshness.stale) {
       payload.index_stale = true;
       payload.note = 'Semantic index may be stale — run /cortex-index to refresh.';
     }
