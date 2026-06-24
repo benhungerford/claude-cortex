@@ -6,7 +6,12 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 
-const { openDb, VECTOR_DIM } = require('../lib/search-db.js');
+const {
+  openDb,
+  VECTOR_DIM,
+  indexCount,
+  indexFreshness
+} = require('../lib/search-db.js');
 
 function makeTmpVault() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'cortex-vault-test-'));
@@ -105,5 +110,39 @@ describe('search-db', () => {
 
   test('VECTOR_DIM is 384 (MiniLM)', () => {
     assert.equal(VECTOR_DIM, 384);
+  });
+
+  // W2.2 — index freshness signals.
+  test('indexCount and indexFreshness report empty on a fresh DB', () => {
+    db = openDb(tmp);
+    assert.equal(indexCount(db), 0);
+    const f = indexFreshness(tmp, db);
+    assert.equal(f.empty, true);
+    assert.equal(f.count, 0);
+    assert.equal(f.stale, false);
+  });
+
+  test('indexFreshness is not empty once a note row exists', () => {
+    db = openDb(tmp);
+    const now = Date.now();
+    db.prepare(
+      'INSERT INTO notes(path, mtime, hash, title, updated) VALUES (?, ?, ?, ?, ?)'
+    ).run('Work/n.md', now, 'h', 'N', now);
+    const f = indexFreshness(tmp, db);
+    assert.equal(f.empty, false);
+    assert.equal(f.count, 1);
+  });
+
+  test('indexFreshness flags stale when _changelog.txt is newer than the index', () => {
+    db = openDb(tmp);
+    const oldTs = Date.now() - 10 * 60 * 1000; // index updated 10 min ago
+    db.prepare(
+      'INSERT INTO notes(path, mtime, hash, title, updated) VALUES (?, ?, ?, ?, ?)'
+    ).run('Work/n.md', oldTs, 'h', 'N', oldTs);
+    // Write a changelog with a fresh (now) mtime → vault changed after index.
+    fs.writeFileSync(path.join(tmp, '_changelog.txt'), 'recent change\n');
+    const f = indexFreshness(tmp, db);
+    assert.equal(f.stale, true);
+    assert.ok(f.stale_by_ms > 0);
   });
 });

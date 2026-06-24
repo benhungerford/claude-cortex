@@ -1,0 +1,5 @@
+{
+  "session_id": "test-biblio",
+  "hook_event_name": "UserPromptSubmit",
+  "user_prompt": "Here are the references I want you to format:\n\nAuthor: Smith, J.\nTitle: The Effects of Sleep on Memory\nJournal: Nature Neuroscience\nYear: 2019\nDOI: 10.1038/nn.1234\nVolume: 22\nPages: 101-110\n\nAuthor: Doe, A.\nTitle: Cognitive Load Theory Revisited\nJournal: Psychological Review\nYear: 2021\nDOI: 10.1037/rev.5678\nVolume: 128\nPages: 45-67\n\nAuthor: Lee, K.\nTitle: Attention and Encoding\nJournal: Cognition\nYear: 2020\nDOI: 10.1016/cog.9012\nVolume: 200\nPages: 1-15\n"
+}

@@ -37,8 +37,18 @@ All inputs come from the `<cortex-session>` block already in the conversation co
 
 Look for a `<cortex-session>` block in the conversation context.
 
-- If absent → **hand off to `cortex-onboarding`**. The hook found no config or no vault.
+- If present → use it directly. This is the fast path (the session-start hook already loaded everything).
 - If present but `<cortex-personality>` is empty → proceed with reduced context. Note once: `Cortex loaded without personality data.`
+- If **absent** → the hook did not run. This happens on shell-less / python-less platforms (iPad, some Cowork Desktop) where the bash/python hook can't execute, so no block is injected. **Before** falling back to onboarding, call the `get_boot_context` MCP tool from `cortex-vault`. It returns the same JSON `hooks/lib/boot-context.py` would produce (`vault_path`, `activation_level`, `personality`, `memory`, `recent_activity`, `inbox_count`, `active_projects`, `project`, `feature_suggestion`). Interpret it exactly as you would the block — read `activation_level` (1/2/3) and apply the activation-level contract in Step 3, treat `project` as the L3 context, and queue any `feature_suggestion`. Only if the tool also reports no vault / no personality (an error result) → **hand off to `cortex-onboarding`**. **Reaching boot through this fallback means the lifecycle hooks are not running on this surface — apply Step 1b for the rest of the session.**
+
+**Step 1b — Hookless-surface maintenance (only when Step 1 used the `get_boot_context` fallback).**
+
+If you booted via `get_boot_context` rather than a `<cortex-session>` block, the `post-tool-use` and `user-prompt-submit` hooks are not firing (e.g. Cowork, iPad). Two automations they normally provide become your responsibility for the rest of the session:
+
+1. **Auto-changelog.** After any *direct* vault write — a raw `Write` / `Edit` / `mcp__obsidian__*` write to a file under the vault that did NOT go through a Cortex write path — call the `append_changelog` MCP tool yourself with a one-line note. Writes made through `cortex-update-context`, `cortex-process-meeting`, `cortex-knowledge`, `scaffold_project`, `thread_meeting`, or `update_moc` already log themselves — **do not double-log those**. Skip operational files (`_changelog.txt`, templates).
+2. **Semantic index.** No re-embed hook fires, but `recall_related` and `search_vault` **self-heal a stale index on their next call** — they run the incremental indexer when the changelog moved after the last index. So faithfully appending the changelog (point 1) is also what keeps search current. Only call `reindex_vault` manually if a search still reports `index_stale` after a write.
+
+Everything else is unchanged — the activation-level contract, the ambient capture watch (Tier 1/2/3 in `references/capture-rules.md`), and dormant-feature queueing are all model-driven and runtime-independent.
 
 **Step 2 — Read the activation level.**
 
@@ -58,7 +68,7 @@ See `references/activation-levels.md` for the full specification. Summary:
 |---|---|
 | **L1** | Say nothing. Answer the user's question directly. Watch for capture signals silently. |
 | **L2** | Say nothing, unless a stale blocker or urgent inbox item is worth surfacing — one line max. |
-| **L3** | One opening line: project name, stage, blocker count. Example: `FKT Shopify Website Build — Integrations stage. 2 open blockers. Ready.` |
+| **L3** | One opening line: project name, stage, blocker count. Example: `FKT Shopify Website Build — Integrations stage. 2 open blockers. Ready.` Append a one-time capture hint to this opener: `(say 'log that' to capture decisions)`. Show it only on the first L3 opener of the session — it tells the user the explicit path, because at L3 inferred captures confirm before writing (see `references/activation-levels.md`, The L3 Inferred-Capture Rule). |
 
 **Step 4 — Queue dormant-feature suggestion.**
 
@@ -82,8 +92,9 @@ Rules:
 - At most **one** `recall_related` call per user turn. Do not chain calls.
 - Use `limit: 5`.
 - Pass the path of any file currently being edited in `exclude_paths` so you don't recall it.
-- Only surface results that have `score > 0.5`. Everything below that is noise.
-- Surface relevant hits in one short line before answering — e.g. `Worth knowing: you've already documented this pattern in [[_MOC]] and [[ywPortal SSO]].` Never dump the full result set.
+- **At L3, scope the recall to the active project.** Pass `scope` = the active project's `vault_path` (the same path the session block resolved the L3 project to). This keeps hits relevant to the project the user is heads-down in, rather than surfacing semantically-similar notes from unrelated projects. At L1/L2 leave `scope` unset (recall across the whole vault). This is a relevance refinement, not an access boundary — the vault is single-user, so every note is the user's own either way.
+- **Only surface results at or above the tool's relevance floor (`min_score`, default `0.55`).** Everything below is noise. The `recall_related` tool enforces this floor server-side, so low-score hits are filtered before they reach you. `0.55` is empirically where genuine matches separate from near-orthogonal noise for this embedding model (see FINDINGS T07); at L3 especially, prefer a quiet recall over a loose one, and raise `min_score` if you want a stricter bar.
+- **Carry project attribution into the surfaced line.** Each result may include a project label (derived from the note's first path segment). When a hit comes from a project, name it: `Worth knowing (FKT): you've already documented this pattern in [[ywPortal SSO]].` For unscoped/cross-vault hits this makes it clear which project the note belongs to. Never dump the full result set.
 - If no results clear the threshold, say nothing about the recall.
 - Skip this step entirely for trivial turns (pleasantries, yes/no confirmations, quick factual questions).
 
@@ -103,8 +114,11 @@ Rules:
 ```
 User opens Claude Code. No <cortex-session> block in context.
 
-Step 1: No session block → hand off to cortex-onboarding.
-cortex-boot does nothing visible. cortex-onboarding takes over.
+Step 1: No session block → call get_boot_context (MCP fallback).
+  - Tool returns an error (no vault / no personality) → hand off to
+    cortex-onboarding. cortex-boot does nothing visible.
+  - Tool returns JSON with a vault and personality → interpret it like the
+    block (read activation_level, apply Step 3). Onboarding is NOT triggered.
 ```
 
 ### Example 2 — L1 passive session
@@ -133,10 +147,10 @@ User's first message: "morning, let's pick up where we left off"
 
 Step 1: Block present.
 Step 2: Level = L3.
-Step 3: Opening line:
+Step 3: Opening line (with the one-time L3 capture hint):
   "FKT Shopify Website Build — Integrations stage. 2 open blockers:
   Stripe sandbox credentials and sandbox access (expiring Fri). What
-  are we tackling?"
+  are we tackling? (say 'log that' to capture decisions)"
 Step 4: No feature suggestion.
 Step 5: Done. User drives from here.
 ```
@@ -145,7 +159,7 @@ Step 5: Done. User drives from here.
 
 | Failure | What cortex-boot does |
 |---|---|
-| No `<cortex-session>` block in context | Hand off to `cortex-onboarding` with reason "no session context". |
+| No `<cortex-session>` block in context | Call `get_boot_context` (MCP fallback). Interpret its JSON like the block. Only hand off to `cortex-onboarding` if the tool also reports no vault / no personality. |
 | `<cortex-personality>` sub-block is empty | Proceed with reduced context. One-line note: `Cortex loaded without personality data.` |
 | `Level:` line missing or unrecognized | Default to L1. |
 | `<cortex-memory>` sub-block is empty | Proceed normally. Memory is optional. |
@@ -155,5 +169,6 @@ Step 5: Done. User drives from here.
 
 - **Hook:** `hooks/session-start` — produces the `<cortex-session>` block
 - **Python module:** `hooks/lib/boot-context.py` — reads vault files and computes activation level
+- **MCP fallback:** `get_boot_context` (cortex-vault) — pure-JS reproduction of `boot-context.py`'s output, used when no `<cortex-session>` block is present (shell-less / python-less platforms)
 - **References:** `references/activation-levels.md`, `references/capture-rules.md`
 - **Handoff target:** `cortex-onboarding` (when no session block is present)

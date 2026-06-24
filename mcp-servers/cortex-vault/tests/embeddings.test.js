@@ -3,7 +3,19 @@
 const { test, describe, before } = require('node:test');
 const assert = require('node:assert/strict');
 
-const { embed, VECTOR_DIM, MAX_CHARS } = require('../lib/embeddings.js');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const {
+  embed,
+  warmExtractor,
+  bundledWeightsPresent,
+  VECTOR_DIM,
+  MAX_CHARS,
+  MODELS_DIR,
+  WEIGHT_FILE,
+  MODEL_ID
+} = require('../lib/embeddings.js');
 
 function cosine(a, b) {
   let sum = 0;
@@ -52,6 +64,37 @@ describe('embeddings', { timeout: 120_000 }, () => {
   test('truncates text longer than MAX_CHARS without throwing', async () => {
     const huge = 'shopify '.repeat(MAX_CHARS); // way over cap
     const v = await embed(huge);
+    assert.equal(v.length, VECTOR_DIM);
+  });
+});
+
+// W2.8 — offline pin + bundled-weights guard.
+describe('embeddings offline pin (W2.8)', { timeout: 120_000 }, () => {
+  test('WEIGHT_FILE resolves under the bundled models/ dir', () => {
+    assert.ok(WEIGHT_FILE.startsWith(MODELS_DIR), 'weight must live under models/');
+    assert.ok(
+      WEIGHT_FILE.includes(path.join(MODEL_ID, 'onnx', 'model.onnx')),
+      'weight path must mirror the HF Hub repo layout'
+    );
+  });
+
+  test('bundledWeightsPresent reflects the on-disk weight file', () => {
+    const onDisk = fs.existsSync(WEIGHT_FILE) && fs.statSync(WEIGHT_FILE).size > 0;
+    assert.equal(bundledWeightsPresent(), onDisk);
+  });
+
+  test('warmExtractor never throws; resolves to a boolean', async () => {
+    const warmed = await warmExtractor();
+    assert.equal(typeof warmed, 'boolean');
+    // When the bundle is present (CI/dev), warming should succeed.
+    if (bundledWeightsPresent()) {
+      assert.equal(warmed, true);
+    }
+  });
+
+  test('embed works offline when bundled weights are present', async () => {
+    if (!bundledWeightsPresent()) return; // skip if no bundle in this env
+    const v = await embed('offline embedding from bundled weights');
     assert.equal(v.length, VECTOR_DIM);
   });
 });

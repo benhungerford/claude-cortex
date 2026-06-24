@@ -6,7 +6,12 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 
-const { indexVault, indexOne } = require('../lib/indexer.js');
+const {
+  indexVault,
+  indexOne,
+  projectSegment,
+  buildScopeMatcher
+} = require('../lib/indexer.js');
 const { openDb } = require('../lib/search-db.js');
 
 function makeVault() {
@@ -167,5 +172,40 @@ describe('indexer', { timeout: 120_000 }, () => {
       .get('Work/ClientA/ProjectX/tech-stack.md');
     db.close();
     assert.equal(row, undefined);
+  });
+});
+
+// W2.3 — attribution + scope helpers (pure, no DB needed).
+describe('indexer attribution + scope helpers (W2.3)', () => {
+  test('projectSegment returns the first path segment', () => {
+    assert.equal(projectSegment('Work/FKT/auth.md'), 'Work');
+    assert.equal(projectSegment('FKT/auth.md'), 'FKT');
+  });
+
+  test('projectSegment returns empty for top-level files', () => {
+    assert.equal(projectSegment('readme.md'), '');
+    assert.equal(projectSegment(''), '');
+    assert.equal(projectSegment(null), '');
+  });
+
+  test('buildScopeMatcher with no prefixes matches everything', () => {
+    const m = buildScopeMatcher([]);
+    assert.equal(m('Work/FKT/auth.md'), true);
+    assert.equal(m('anything.md'), true);
+  });
+
+  test('buildScopeMatcher is segment-aware (Work does not match Workshop)', () => {
+    const m = buildScopeMatcher(['Work']);
+    assert.equal(m('Work/FKT/auth.md'), true);
+    assert.equal(m('Work'), true);
+    assert.equal(m('Workshop/notes.md'), false);
+    assert.equal(m('Personal/n.md'), false);
+  });
+
+  test('buildScopeMatcher accepts multiple prefixes and trims slashes', () => {
+    const m = buildScopeMatcher(['/Work/FKT/', 'Personal']);
+    assert.equal(m('Work/FKT/auth.md'), true);
+    assert.equal(m('Personal/journal.md'), true);
+    assert.equal(m('Work/YW/sso.md'), false);
   });
 });

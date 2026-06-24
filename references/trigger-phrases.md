@@ -29,7 +29,7 @@ Update this file first when adding a new skill or changing a trigger. Changes he
 | 9 | Literal: "that's resolved", "blocker resolved", "unblocked", "we got <X>" (where X is a previously-logged blocker) | `cortex-update-context` | Blocker-resolved capture. |
 | 10 | Literal: "new project", "start tracking", "I'm starting a new <project_term>", "scaffold a project for <X>" | `cortex-ingest-project` | |
 | 11 | Structural: user pastes a long block of text (5+ lines) that looks like a project brief (mentions goals, deadlines, deliverables, stakeholders) and no existing project matches | `cortex-ingest-project` | Heuristic — if uncertain, ask "is this a new project or an update to <X>?" |
-| 12 | Structural: user pastes a transcript — multi-line, "Speaker: text" format, or a Granola/Fathom/Gong export | `cortex-process-meeting` | Length threshold: 20+ lines. |
+| 12 | Structural: user pastes a transcript — 20+ lines with speaker labels in any common form: `Name:`, multi-word `First Last:`, Granola `**Name:**`, Fathom `[HH:MM] Name:`, or bullet/dash `- Name:`. Speaker lines must be ≥25% of total lines (density), and the paste must not be a metadata/citation block (Author/Title/DOI/Year/Journal). | `cortex-process-meeting` | **Timestamped** (`[HH:MM]`) → confidence:high, hard route. **No temporal marker** → confidence:medium; the skill asks "file this as a meeting, or just keep as context?" rather than hard-filing. |
 | 13 | Literal: "process this meeting", "here are the notes from <X>", "meeting notes:", "from my call with <X>" | `cortex-process-meeting` | |
 | 14 | Structural: Granola / Fathom MCP tool returned a transcript in the current turn | `cortex-process-meeting` | Hard route. |
 | 15 | Literal: "reusable", "worth remembering", "add to knowledge base", "file as a reference", "save this pattern", "for future projects" | `cortex-knowledge` | |
@@ -49,7 +49,7 @@ Update this file first when adding a new skill or changing a trigger. Changes he
 
 **Long text paste:** user message contains 5+ lines AND has at least one paragraph of prose. Different from a structured transcript (which has speaker labels).
 
-**Transcript paste:** user message has 20+ lines AND includes speaker-labeled lines (`Name: text`) OR is returned by a Granola/Fathom MCP tool in the same turn.
+**Transcript paste:** user message has 20+ lines AND speaker-labeled lines make up ≥25% of total lines. Speaker labels are matched in any common export form — bare `Name: text`, multi-word `First Last:`, Granola bold `**Name:**`, Fathom timestamped `[HH:MM] Name:`, and bullet/dash `- Name:`. A metadata/citation block (≥2 of Author/Title/DOI/Year/Journal/… with no timestamps) is explicitly excluded so bibliography and quote pastes do not misfire. A timestamped paste hard-routes at confidence:high; an untimestamped speaker-labeled paste routes at confidence:medium so the skill can confirm intent (file vs. context). A Granola/Fathom MCP tool returning a transcript in the same turn also counts.
 
 **Orphaned stub:** walking up from cwd finds a `CLAUDE.md` whose first 20 lines contain the phrases "Cortex-managed repo" or "invoke the Cortex skill", but `resolve-cwd` returns no registry match.
 

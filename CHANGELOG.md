@@ -1,5 +1,15 @@
 # Claude Cortex Plugin — Changelog
 
+## v1.4.1 — 2026-06-24
+
+**Cowork / hookless-surface reliability.**
+
+- MCP server **auto-installs missing dependencies on launch** (announced on stderr, public npm packages only, no vault data sent) so the tools work in no-terminal surfaces like Cowork. Opt out with `CORTEX_SKIP_NPM_INSTALL=1`. Replaces the previous consent-gated fail-fast as the default.
+- `recall_related` / `search_vault` **self-heal a stale semantic index**: when the freshness gate reports drift, they run the incremental indexer (hash-skips unchanged notes) before querying, so recent edits are found without the `post-tool-use` re-embed hook (which never fires on hookless surfaces). Opt out with `CORTEX_NO_AUTO_REINDEX=1`.
+- `cortex-boot`: new **Step 1b hookless-surface maintenance contract** — when booted via the `get_boot_context` MCP fallback (hooks not running), the model appends the changelog after direct vault writes and relies on search self-heal for re-embedding.
+- Docs: corrected README (ONNX weight is committed, 16 MCP tools, auto-install behavior); added v1.4.0 + v1.4.1 to version history.
+- New self-heal regression test (`tests/self-heal-index.test.js`).
+
 ## v1.4.0 — 2026-05-09
 
 **Onboarding rewrite + Q1 hardening + Q2 foundations.**

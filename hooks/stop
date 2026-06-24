@@ -135,39 +135,99 @@ fi
 MEMORY_FILE="$VAULT_PATH/memory.md"
 CHANGELOG_FILE="$VAULT_PATH/_changelog.txt"
 
+# Flush pending-memory.json into memory.md. Kept in sync with the update_memory
+# MCP tool (mcp-servers/cortex-vault/tools/update-memory.js): verbatim-line dedup
+# (whitespace-insensitive), optional `section` header (reused if present), and a
+# soft ~80-line eviction notice so old facts are never silently dropped.
+# Prints "<written>|<linecount>" on success.
+SOFT_LINE_CAP=80
 FLUSH_RESULT="$(python3 -c "
-import json, sys, os
+import json, sys, os, re
 
 pending_file = sys.argv[1]
 memory_file = sys.argv[2]
+soft_cap = int(sys.argv[3])
+
+def norm(s):
+    return re.sub(r'\s+', ' ', str(s).strip())
 
 try:
     with open(pending_file) as f:
         updates = json.load(f)
 except Exception:
-    print('0')
+    print('0|0')
     sys.exit()
 
 if not isinstance(updates, list) or len(updates) == 0:
-    print('0')
+    print('0|0')
     sys.exit()
 
-# Read existing memory content
 existing = ''
 if os.path.exists(memory_file):
     with open(memory_file) as f:
         existing = f.read()
+if not existing:
+    existing = '# Memory\n'
 
-# Append each update
-with open(memory_file, 'a') as f:
-    for entry in updates:
-        section = entry.get('section', '')
-        content = entry.get('content', '')
-        if content:
-            f.write('\n' + content + '\n')
+lines = existing.split('\n')
+seen = {norm(l) for l in lines}
+written = 0
 
-print(str(len(updates)))
-" "$PENDING_FILE" "$MEMORY_FILE" 2>/dev/null)" || FLUSH_RESULT="0"
+for entry in updates:
+    if not isinstance(entry, dict):
+        continue
+    section = (entry.get('section') or '').strip()
+    content = (entry.get('content') or '').strip()
+    if not content:
+        continue
+    # Dedup against everything already present, including facts added this flush.
+    block_lines = [l for l in content.split('\n') if l.strip()]
+    new_block = [l for l in block_lines if norm(l) not in seen]
+    if not new_block:
+        continue
+    if section:
+        header = '## ' + section
+        idx = next((i for i, l in enumerate(lines) if l.strip() == header), -1)
+        if idx == -1:
+            if lines and lines[-1] != '':
+                lines.append('')
+            lines.append(header)
+            for l in new_block:
+                lines.append(l)
+                seen.add(norm(l))
+        else:
+            insert_at = idx + 1
+            for off, l in enumerate(new_block):
+                lines.insert(insert_at + off, l)
+                seen.add(norm(l))
+    else:
+        for l in new_block:
+            lines.append(l)
+            seen.add(norm(l))
+    written += 1
+
+if written == 0:
+    print('0|0')
+    sys.exit()
+
+out = '\n'.join(lines)
+if not out.endswith('\n'):
+    out += '\n'
+
+# Atomic-ish write.
+tmp = memory_file + '.tmp'
+with open(tmp, 'w') as f:
+    f.write(out)
+os.replace(tmp, memory_file)
+
+line_count = len([l for l in out.split('\n') if l])
+print(f'{written}|{line_count}')
+" "$PENDING_FILE" "$MEMORY_FILE" "$SOFT_LINE_CAP" 2>/dev/null)" || FLUSH_RESULT="0|0"
+
+# Split "written|linecount".
+FLUSH_COUNT="${FLUSH_RESULT%%|*}"
+MEMORY_LINES="${FLUSH_RESULT##*|}"
+FLUSH_RESULT="$FLUSH_COUNT"
 
 if [[ "$FLUSH_RESULT" == "0" ]]; then
     printf '{}\n'
@@ -190,7 +250,12 @@ rm -f "$PENDING_FILE"
 
 # ── Step 7: Output confirmation ─────────────────────────────────────────────
 
-CONTEXT="<cortex-memory>Flushed $FLUSH_RESULT pending memory update(s) to vault memory.md.</cortex-memory>"
+EVICTION_NOTE=""
+if [[ -n "${MEMORY_LINES:-}" && "$MEMORY_LINES" -gt "$SOFT_LINE_CAP" ]]; then
+    EVICTION_NOTE=" memory.md now has $MEMORY_LINES lines (soft cap $SOFT_LINE_CAP); run /cortex-compact-memory to evict stale facts."
+fi
+
+CONTEXT="<cortex-memory>Flushed $FLUSH_RESULT pending memory update(s) to vault memory.md.$EVICTION_NOTE</cortex-memory>"
 ESCAPED="$(escape_for_json "$CONTEXT")"
 
 if [[ -n "${CURSOR_PLUGIN_ROOT:-}" ]]; then

@@ -154,6 +154,13 @@ echo "user-prompt-submit:"
 run_test "detects meeting" "user-prompt-submit" "user-prompt-submit-meeting.json" "cortex-process-meeting"
 run_test "detects status query" "user-prompt-submit" "user-prompt-submit-status.json" "cortex-check-status"
 run_test_empty "no match returns empty" "user-prompt-submit" "user-prompt-submit-no-match.json"
+# W2.9 — transcript detection: a Granola-style **Name:** paste (no timestamps)
+# routes to meeting at medium confidence (skill confirms file vs context).
+run_test "Granola transcript routes to meeting" "user-prompt-submit" "user-prompt-submit-transcript-granola.json" "cortex-process-meeting"
+run_test "Granola transcript is medium confidence (no timestamps)" "user-prompt-submit" "user-prompt-submit-transcript-granola.json" "confidence: medium"
+# W2.9 — a bibliography/citation paste (Author:/Title:/DOI:) shares the "Key:"
+# shape but must NOT hard-route to meeting filing.
+run_test_empty "bibliography paste does NOT route to meeting" "user-prompt-submit" "user-prompt-submit-bibliography.json"
 
 echo
 echo "stop:"
@@ -338,6 +345,68 @@ if [[ -f "$CLAUDE_PLUGIN_DATA/session-cache/vault-path.txt" ]]; then
 else
     echo "  FAIL: vault-path cached (file missing)"
     FAIL=$((FAIL + 1))
+fi
+
+# Test 11: hub-schema parser agreement (W1.1).
+# Python parse_hub and JS read_hub must extract the SAME blockers/questions
+# from the same canonical pipe-table hub — the cross-language guard that keeps
+# the two parsers from drifting apart again.
+echo
+echo "hub-schema parser agreement (Python parse_hub == JS read_hub):"
+FIXTURE_VAULT="$REPO_ROOT/mcp-servers/cortex-vault/tests/fixtures/vault"
+MCP_DIR="$REPO_ROOT/mcp-servers/cortex-vault"
+BC_PATH="$REPO_ROOT/hooks/lib/boot-context.py"
+if command -v python3 >/dev/null 2>&1 && command -v node >/dev/null 2>&1; then
+  agree_out="$(python3 - "$FIXTURE_VAULT" "$MCP_DIR" "$BC_PATH" <<'PYEOF'
+import importlib.util, json, subprocess, sys
+vault, mcp_dir, bc_path = sys.argv[1], sys.argv[2], sys.argv[3]
+proj = "Work/TBL/Test Client/Test Project"
+ctx = "Test Project — Project Context.md"
+
+spec = importlib.util.spec_from_file_location("boot_context", bc_path)
+bc = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(bc)
+py = bc.parse_hub(vault, {"vault_path": proj, "context_file": ctx})
+py_set = {"blockers": sorted(py["blockers"]), "open_questions": sorted(py["open_questions"])}
+
+node_src = (
+    "require('./tools/read-hub.js').handler({project_path:process.argv[1]}, process.argv[2])"
+    ".then(r=>{const d=JSON.parse(r.content[0].text);"
+    "console.log(JSON.stringify({blockers:d.blockers.sort(),open_questions:d.open_questions.sort()}));});"
+)
+node = subprocess.run(["node", "-e", node_src, proj, vault], cwd=mcp_dir,
+                      capture_output=True, text=True)
+js_set = json.loads(node.stdout.strip())
+if py_set == js_set and py_set["blockers"]:
+    print("OK " + json.dumps(py_set))
+else:
+    print("MISMATCH py=%s js=%s err=%s" % (json.dumps(py_set), json.dumps(js_set), node.stderr.strip()))
+PYEOF
+)"
+  if [[ "$agree_out" == OK* ]]; then
+    echo "  PASS: parsers agree ($agree_out)"
+    PASS=$((PASS + 1))
+  else
+    echo "  FAIL: parser disagreement — $agree_out"
+    FAIL=$((FAIL + 1))
+  fi
+else
+  echo "  SKIP: python3 or node not available"
+fi
+
+# Test 12: boot-context token-budget behavior (W1.4).
+echo
+echo "boot-context token budget (W1.4):"
+if command -v python3 >/dev/null 2>&1; then
+  if python3 "$REPO_ROOT/tests/test_boot_budget.py" >/dev/null 2>&1; then
+    echo "  PASS: budget reserves bucket list, drops overflow cleanly, signals truncation"
+    PASS=$((PASS + 1))
+  else
+    echo "  FAIL: boot budget tests"
+    FAIL=$((FAIL + 1))
+  fi
+else
+  echo "  SKIP: python3 not available"
 fi
 
 echo

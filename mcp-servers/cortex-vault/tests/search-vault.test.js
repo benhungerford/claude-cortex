@@ -59,7 +59,8 @@ describe('search_vault tool', { timeout: 180_000 }, () => {
   });
 
   test('results include path, title, score, and snippet', async () => {
-    const res = await searchVault.handler({ query: 'checkout' }, vault);
+    // min_score:0 so the field-shape assertion is independent of the floor.
+    const res = await searchVault.handler({ query: 'checkout', min_score: 0 }, vault);
     const data = JSON.parse(res.content[0].text);
     const top = data.results[0];
     assert.ok(typeof top.path === 'string');
@@ -76,5 +77,63 @@ describe('search_vault tool', { timeout: 180_000 }, () => {
   test('exports correct schema metadata', () => {
     assert.equal(searchVault.name, 'search_vault');
     assert.equal(searchVault.inputSchema.required[0], 'query');
+  });
+
+  // W2.3 — scope + min_score + attribution.
+  test('include_paths restricts search to the scoped subtree', async () => {
+    const res = await searchVault.handler(
+      { query: 'authentication', include_paths: ['Work/ClientB'], min_score: 0 },
+      vault
+    );
+    const data = JSON.parse(res.content[0].text);
+    assert.ok(data.results.every((r) => r.path.startsWith('Work/ClientB/')));
+  });
+
+  test('min_score is enforced server-side', async () => {
+    const res = await searchVault.handler(
+      { query: 'checkout', min_score: 0.99 },
+      vault
+    );
+    const data = JSON.parse(res.content[0].text);
+    assert.equal(data.min_score, 0.99);
+    assert.ok(data.results.every((r) => r.score >= 0.99));
+  });
+
+  test('results carry a project attribution field', async () => {
+    const res = await searchVault.handler({ query: 'checkout', min_score: 0 }, vault);
+    const data = JSON.parse(res.content[0].text);
+    assert.ok(data.results.length >= 1);
+    assert.equal(typeof data.results[0].project, 'string');
+    assert.equal(data.results[0].project, 'Work');
+  });
+
+  test('schema advertises include_paths, scope, and min_score', () => {
+    const props = searchVault.inputSchema.properties;
+    assert.ok(props.include_paths);
+    assert.ok(props.scope);
+    assert.ok(props.min_score);
+  });
+});
+
+// W2.2 — empty-index signal.
+describe('search_vault index_empty signal (W2.2)', { timeout: 120_000 }, () => {
+  let vault;
+
+  before(() => {
+    vault = fs.mkdtempSync(path.join(os.tmpdir(), 'cortex-searchvault-empty-'));
+    writeNote(vault, 'Work/note.md', '# A note\n\nContent.\n');
+    // No indexVault call — DB is empty.
+  });
+
+  after(() => {
+    if (vault) fs.rmSync(vault, { recursive: true, force: true });
+  });
+
+  test('reports index_empty for a never-built index', async () => {
+    const res = await searchVault.handler({ query: 'anything' }, vault);
+    const data = JSON.parse(res.content[0].text);
+    assert.equal(data.count, 0);
+    assert.equal(data.index_empty, true);
+    assert.match(data.note, /cortex-index/);
   });
 });

@@ -32,6 +32,10 @@ Fires automatically. No user confirmation required. A brief confirmation line go
 
 **Tier 1 never asks permission.** If the conversation contains one of these signals and the destination is obvious, write it.
 
+**Exception — inferred Tier 1 at L3.** This silent-write rule has one carve-out, tied to activation level (see `activation-levels.md`). The distinction is *how the signal arrived*:
+- **Explicit trigger** ("log that", "we decided", "new blocker"): always proceeds as Tier 1 and writes silently — at every level, including L3.
+- **Inferred signal** (Cortex picked up a decision/scope-change/blocker ambiently, the user did not ask to log it): writes silently at L1/L2, but at **L3** requires a one-line confirm before writing — e.g. `Log that wholesale portal moved out of scope to FKT? (y)`. Rationale: at L3 the user is heads-down in a repo and an inferred write they didn't request is more likely to be debugging chatter than a real decision. Write only on confirmation.
+
 ---
 
 ## Tier 2 — Ask before capturing

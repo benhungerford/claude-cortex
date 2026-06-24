@@ -385,6 +385,61 @@ describe('scaffold_project', () => {
     assert.ok(contents.includes('CREATED'), 'changelog should have CREATED entries');
     assert.ok(contents.includes('Logged Project'), 'changelog should mention the project name');
   });
+
+  // --- W2.10: persona-agnostic scaffold -----------------------------------
+  // category is freeform (driven by personality.md buckets), not a hardcoded
+  // ['Personal','TBL'] enum, so a non-Ben vault can use its own bucket terms.
+
+  test('scaffolds a non-default (freeform) bucket category', async () => {
+    const result = await tool.handler(
+      { client: 'Acme Co', project: 'Migration', category: 'Consulting' },
+      tmpVault
+    );
+
+    assert.equal(result.isError, undefined, 'a freeform category must not error');
+
+    const projectBase = path.join(tmpVault, 'Work/Consulting/Acme Co/Migration');
+    assert.ok(fs.existsSync(path.join(projectBase, '_MOC.md')), 'project _MOC.md should exist under the freeform category');
+    assert.ok(fs.existsSync(path.join(projectBase, 'Migration — Project Context.md')), 'Project Context should exist');
+
+    const data = JSON.parse(result.content[0].text);
+    assert.equal(data.category, 'Consulting', 'returned category should echo the freeform value');
+    assert.equal(data.project_path, 'Work/Consulting/Acme Co/Migration', 'path should use the freeform category');
+  });
+
+  test('honours a custom bucket_root for non-Ben vault trees', async () => {
+    const result = await tool.handler(
+      { client: 'Acme Co', project: 'Site', category: 'Clients', bucket_root: 'Engagements' },
+      tmpVault
+    );
+
+    assert.equal(result.isError, undefined, 'a custom bucket_root must not error');
+
+    const projectBase = path.join(tmpVault, 'Engagements/Clients/Acme Co/Site');
+    assert.ok(fs.existsSync(path.join(projectBase, '_MOC.md')), 'project should scaffold under the custom bucket_root');
+    assert.ok(!fs.existsSync(path.join(tmpVault, 'Work/Clients/Acme Co/Site')), 'must not fall back to the hardcoded Work/ root');
+  });
+
+  test('brand layer is generic — works for any category, not just Personal', async () => {
+    const result = await tool.handler(
+      { client: 'Studio X', project: 'App', category: 'Freelance', brand: 'NovaLine' },
+      tmpVault
+    );
+
+    assert.equal(result.isError, undefined, 'brand layer under a non-Personal category must not error');
+
+    const projectBase = path.join(tmpVault, 'Work/Freelance/Studio X/NovaLine/App');
+    assert.ok(fs.existsSync(path.join(projectBase, '_MOC.md')), 'brand layer should apply regardless of category name');
+  });
+
+  test('rejects an unsafe bucket_root segment', async () => {
+    const result = await tool.handler(
+      { client: 'Acme Co', project: 'Site', category: 'Clients', bucket_root: '../escape' },
+      tmpVault
+    );
+
+    assert.equal(result.isError, true, 'unsafe bucket_root must be rejected by path-safety guard');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -552,8 +607,8 @@ describe('list_projects', () => {
     assert.equal(p.project, 'Test Project', 'project name should match');
     assert.equal(p.client, 'Test Client', 'client should match');
     assert.equal(p.status, 'Active Build', 'status should match');
-    assert.equal(p.open_questions, 2, 'should count 2 open questions');
-    assert.equal(p.blockers, 0, 'should count 0 blockers (no Blockers section)');
+    assert.equal(p.open_questions, 2, 'should count 2 open questions (Type Question, Open)');
+    assert.equal(p.blockers, 1, 'should count 1 blocker (Type Dependency, Open); resolved row excluded');
     assert.ok('updated' in p, 'should have updated field');
     assert.ok('path' in p, 'should have path field');
   });
@@ -603,7 +658,7 @@ describe('open_question', () => {
 
     const contextPath = path.join(tmpVault, 'Work/TBL/Test Client/Test Project/Test Project — Project Context.md');
     const contents = fs.readFileSync(contextPath, 'utf8');
-    assert.ok(contents.includes('- [ ] What CDN should we use?'), 'new question should appear unchecked');
+    assert.match(contents, /\|\s*\d+\s*\|\s*What CDN should we use\?\s*\|.*\|\s*Open\s*\|/, 'new question should appear as an Open pipe-table row');
   });
 
   test('resolves an existing question by substring match', async () => {
@@ -621,9 +676,11 @@ describe('open_question', () => {
 
     const contextPath = path.join(tmpVault, 'Work/TBL/Test Client/Test Project/Test Project — Project Context.md');
     const contents = fs.readFileSync(contextPath, 'utf8');
-    assert.ok(!contents.includes('- [ ] How should we handle the API integration?'), 'question should no longer be unchecked');
-    assert.ok(contents.includes('- [x]'), 'resolved question should be checked');
-    assert.ok(contents.includes('Using REST API with OAuth2'), 'resolution text should appear');
+    assert.ok(!contents.includes('How should we handle the API integration?'), 'resolved row should be removed entirely');
+    assert.ok(!contents.includes('[x]'), 'no strikethrough/checked rows left behind');
+    // Resolution is recorded in the changelog, not left in the hub.
+    const changelog = fs.readFileSync(path.join(tmpVault, '_changelog.txt'), 'utf8');
+    assert.ok(changelog.includes('Using REST API with OAuth2'), 'resolution text should be logged to the changelog');
   });
 
   test('returns error when resolving without resolution text', async () => {

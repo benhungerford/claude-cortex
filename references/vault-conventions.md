@@ -22,10 +22,15 @@ Full reference: see `frontmatter-and-tags.md` in the vault's `.claude/rules/` di
 
 | Prefix | Values |
 |--------|--------|
-| #domain/ | shopify, wordpress, frontend, backend, design, devops, seo |
+| #domain/ | **User-defined.** Whatever domain taxonomy the user declares in `personality.md` (e.g. a web dev might use `shopify, wordpress, frontend, backend, design, devops, seo`; a researcher might use `clinical, qualitative, grant`; a coach `intake, programming, nutrition`). Not a fixed list — read `personality.md` for this vault's domains. |
 | #source/ | meeting, client, internal, monday, figma, pastel, email |
 | #status/ | active, evergreen, archived |
 | #type/ | project-context, moc, meeting-notes, reference, spec, decision, qa-note, weekly-review, knowledge, changelog |
+
+The `#domain/<value>` tag passed to `scaffold_project` is freeform; the bucket
+`category` and top-level `bucket_root` are likewise driven by the user's
+`personality.md` buckets (defaults `Work/TBL/…` and `Work/Personal/…`, but any
+vault's own bucket terms and root folder are valid).
 
 **Changelog Format**
 

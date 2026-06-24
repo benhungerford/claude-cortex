@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const { getVaultPath, resolveInsideVault, VaultPathError } = require('../lib/vault-path.js');
 const { readFile } = require('../lib/file-ops.js');
 const { extractFrontmatter } = require('../lib/yaml.js');
+const { parseQuestionBlockerRows, classifyRows } = require('../lib/hub-schema.js');
 
 function findProjectContextFile(dirPath) {
   let entries;
@@ -41,24 +42,12 @@ function extractSection(body, sectionName) {
   return sectionLines.join('\n').trim();
 }
 
-function extractOpenQuestions(body) {
-  const sectionContent = extractSection(body, 'Open Questions');
-  if (!sectionContent) return [];
-
-  return sectionContent
-    .split('\n')
-    .filter((line) => line.match(/^- \[ \]/))
-    .map((line) => line.replace(/^- \[ \]\s*/, '').trim());
-}
-
-function extractBlockers(body) {
-  const sectionContent = extractSection(body, 'Blockers');
-  if (!sectionContent) return [];
-
-  return sectionContent
-    .split('\n')
-    .filter((line) => line.match(/^- \[ \]/))
-    .map((line) => line.replace(/^- \[ \]\s*/, '').trim());
+// Open Questions & Blockers come from the canonical pipe-table (hub-schema.js),
+// the same representation boot-context.py's parse_hub reads. classifyRows()
+// splits blockers (Type Dependency/Internal/Unknown) from questions and skips
+// resolved rows.
+function extractQuestionsAndBlockers(body) {
+  return classifyRows(parseQuestionBlockerRows(body));
 }
 
 async function handler(args, vaultOverride) {
@@ -104,13 +93,14 @@ async function handler(args, vaultOverride) {
 
   const { frontmatter, body } = extractFrontmatter(content);
 
+  const { openQuestions, blockers } = extractQuestionsAndBlockers(body);
   const result = {
     project: frontmatter?.project || null,
     client: frontmatter?.client || null,
     status: frontmatter?.status || null,
     launch: frontmatter?.launch || null,
-    open_questions: extractOpenQuestions(body),
-    blockers: extractBlockers(body),
+    open_questions: openQuestions,
+    blockers: blockers,
     current_phase: extractSection(body, 'Current Phase') || null,
     key_decisions: extractSection(body, 'Key Decisions') || null,
     file: contextFileName

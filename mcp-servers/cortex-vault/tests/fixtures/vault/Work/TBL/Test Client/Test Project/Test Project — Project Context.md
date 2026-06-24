@@ -20,16 +20,18 @@ A test project for fixture vault testing.
 
 Development
 
-## Open Questions
-
-- [ ] How should we handle the API integration?
-- [ ] Which payment provider to use?
-- [x] Database choice — Resolved: PostgreSQL
-
 ## Key Decisions
 
 - Using Node.js for the backend
 - PostgreSQL for database
+
+## Open Questions & Blockers
+| # | Question / Blocker | Type | Owner | Status |
+|---|-------------------|------|-------|--------|
+| 1 | How should we handle the API integration? | Question | Ben | Open |
+| 2 | Which payment provider to use? | Question | Ben | Open |
+| 3 | Stripe sandbox credentials | Dependency | Client | Open |
+| 4 | Database choice | Internal | Ben | Resolved |
 
 ---
 *Related:* [[_MOC]]

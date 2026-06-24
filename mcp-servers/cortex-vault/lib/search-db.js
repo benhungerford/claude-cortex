@@ -40,4 +40,63 @@ function openDb(vaultPath) {
   return db;
 }
 
-module.exports = { openDb, VECTOR_DIM };
+// W2.2 — index freshness signals. These let callers distinguish an empty index
+// ("never built — run /cortex-index") from a genuine no-match, and surface a
+// staleness notice when the vault has changed more recently than the index.
+
+// Count indexed notes. 0 ⇒ the index has never been built (or was cleared).
+function indexCount(db) {
+  try {
+    return db.prepare('SELECT COUNT(*) AS n FROM notes').get().n;
+  } catch {
+    return 0;
+  }
+}
+
+// Most recent index write (ms epoch), or 0 if empty.
+function indexMaxUpdated(db) {
+  try {
+    const row = db.prepare('SELECT MAX(updated) AS m FROM notes').get();
+    return row && row.m ? Number(row.m) : 0;
+  } catch {
+    return 0;
+  }
+}
+
+// Compare the index's freshness against the vault's `_changelog.txt` mtime
+// (a cheap proxy for "the vault changed"). Returns a small report the boot
+// path / skill can turn into a one-line notice. Never throws.
+function indexFreshness(vaultPath, db) {
+  const count = indexCount(db);
+  const empty = count === 0;
+  const indexUpdated = indexMaxUpdated(db);
+
+  let vaultChanged = 0;
+  try {
+    const changelog = path.join(vaultPath, '_changelog.txt');
+    vaultChanged = fs.statSync(changelog).mtimeMs;
+  } catch {
+    vaultChanged = 0;
+  }
+
+  // Stale only when we have both signals and the vault moved after the index.
+  const stale = !empty && vaultChanged > 0 && vaultChanged > indexUpdated;
+  const ageMs = indexUpdated > 0 ? Math.max(0, vaultChanged - indexUpdated) : 0;
+
+  return {
+    count,
+    empty,
+    stale,
+    index_updated: indexUpdated,
+    vault_changed: vaultChanged,
+    stale_by_ms: stale ? ageMs : 0
+  };
+}
+
+module.exports = {
+  openDb,
+  VECTOR_DIM,
+  indexCount,
+  indexMaxUpdated,
+  indexFreshness
+};

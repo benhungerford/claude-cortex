@@ -29,9 +29,11 @@ registerTool(require('./tools/search-vault.js'));
 registerTool(require('./tools/recall-related.js'));
 registerTool(require('./tools/reindex-vault.js'));
 registerTool(require('./tools/register-repo.js'));
+registerTool(require('./tools/get-boot-context.js'));
+registerTool(require('./tools/update-memory.js'));
 
 const server = new Server(
-  { name: 'cortex-vault', version: '1.4.0' },
+  { name: 'cortex-vault', version: '1.4.1' },
   { capabilities: { tools: {} } }
 );
 
@@ -64,6 +66,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 });
 
 async function main() {
+  // W2.1 — eager-warm the embedding extractor before connecting transport so
+  // the first ambient recall pays warm latency, not a multi-second cold start.
+  // Fire-and-forget: warmExtractor never rejects (it swallows + logs), so a
+  // missing model bundle can't delay or crash boot.
+  const { warmExtractor } = require('./lib/embeddings.js');
+  warmExtractor();
+
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error('cortex-vault MCP server running on stdio');

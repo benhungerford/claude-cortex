@@ -24,6 +24,22 @@ const path = require('node:path');
 
 const { writeFile, readFile } = require('./file-ops.js');
 
+// ── Path normalization (KEEP IN SYNC with hooks/lib/boot-context.py) ──
+// The Node MCP resolver and the Python boot resolver must compare repo paths
+// the SAME way, or a repo opened via a symlink/worktree resolves to L3 in one
+// and L1 in the other. Shared rule: realpath() when the path exists (collapses
+// symlinks + ".."), else fall back to a plain absolute-normalized form so
+// non-existent registry entries still compare deterministically. The Python
+// side mirrors this in `normalize_path` — edit both together.
+function normalizePath(p) {
+  if (!p) return p;
+  try {
+    return fs.realpathSync(p);
+  } catch {
+    return path.normalize(path.resolve(p));
+  }
+}
+
 const CANONICAL_REL = path.join('.claude', 'cortex', 'registry.json');
 const LEGACY_REL = '_repo_registry.json';
 const SCHEMA_VERSION = 1;
@@ -102,10 +118,10 @@ function saveRegistry(vault, registry) {
 
 // Find which project owns a repo_path (exact match). Returns null if none.
 function findProjectByRepoPath(registry, repoPath) {
-  const target = path.normalize(repoPath);
+  const target = normalizePath(repoPath);
   for (const project of registry.projects) {
     for (const p of project.repo_paths || []) {
-      if (path.normalize(p) === target) return project;
+      if (normalizePath(p) === target) return project;
     }
   }
   return null;
@@ -114,7 +130,7 @@ function findProjectByRepoPath(registry, repoPath) {
 // Walk up from cwd, return the first project whose repo_paths contains an
 // ancestor of cwd. Returns null when no ancestor matches.
 function findProjectByCwd(registry, cwd) {
-  let current = path.normalize(cwd);
+  let current = normalizePath(cwd);
   while (true) {
     const match = findProjectByRepoPath(registry, current);
     if (match) return match;
@@ -128,6 +144,7 @@ module.exports = {
   CANONICAL_REL,
   LEGACY_REL,
   SCHEMA_VERSION,
+  normalizePath,
   canonicalPath,
   legacyPath,
   emptyRegistry,

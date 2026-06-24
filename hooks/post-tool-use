@@ -191,7 +191,23 @@ else
     echo "$ENTRY" >> "$CHANGELOG"
 fi
 
-# ── Step 8b: Re-index .md file into semantic search (background, silent) ─────
+# ── Step 8b: Re-index .md file into semantic search (debounced serial queue) ─
+#
+# W2.2 — Replace the old fire-and-forget per-write spawn (which launched an
+# unbounded number of detached `reindex-one` processes — one per save, racing
+# each other on the same SQLite DB) with a debounced, serialized queue:
+#
+#   1. Append the changed path to a per-session queue file.
+#   2. Start ONE background drainer, guarded by an atomic mkdir lock. If a
+#      drainer is already running it simply exits — the running drainer will
+#      pick up paths appended after it started, so nothing is lost.
+#   3. The drainer debounces briefly (coalescing rapid bursts), then drains the
+#      queue serially (one reindex at a time), logging failures to stderr
+#      instead of swallowing them.
+#
+# This caps reindex concurrency at one worker and removes the per-write race,
+# without depending on the stop hook to drain (stop-hook draining is a separate
+# follow-up owned elsewhere). Each save still gets reindexed within the session.
 
 if [[ "$FILENAME" == *.md ]]; then
     SKIP_REINDEX=0
@@ -203,8 +219,38 @@ if [[ "$FILENAME" == *.md ]]; then
     if [[ "$SKIP_REINDEX" == "0" ]]; then
         PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-${CURSOR_PLUGIN_ROOT:-}}"
         REINDEX_BIN="$PLUGIN_ROOT/mcp-servers/cortex-vault/bin/reindex-one.js"
-        if [[ -n "$PLUGIN_ROOT" && -f "$REINDEX_BIN" ]]; then
-            (node "$REINDEX_BIN" "$VAULT_PATH" "$REL_PATH" >/dev/null 2>&1 &) || true
+        if [[ -n "$PLUGIN_ROOT" && -f "$REINDEX_BIN" ]] && command -v node &>/dev/null; then
+            REINDEX_DIR="$PLUGIN_DATA/session-cache/reindex"
+            mkdir -p "$REINDEX_DIR" 2>/dev/null || true
+            QUEUE_FILE="$REINDEX_DIR/queue.txt"
+            LOCK_DIR="$REINDEX_DIR/drain.lock"
+
+            # Enqueue: one tab-separated "vault<TAB>relpath" line per change.
+            printf '%s\t%s\n' "$VAULT_PATH" "$REL_PATH" >> "$QUEUE_FILE" 2>/dev/null || true
+
+            # Try to become the single drainer (atomic mkdir is the lock).
+            if mkdir "$LOCK_DIR" 2>/dev/null; then
+                (
+                    # Release the lock no matter how we exit.
+                    trap 'rmdir "$LOCK_DIR" 2>/dev/null || true' EXIT
+                    # Debounce: let a burst of rapid saves accumulate first.
+                    sleep 1
+                    # Drain serially until the queue is empty.
+                    while [[ -s "$QUEUE_FILE" ]]; do
+                        # Atomically claim the current batch.
+                        BATCH="$QUEUE_FILE.draining"
+                        mv "$QUEUE_FILE" "$BATCH" 2>/dev/null || break
+                        # De-dupe so repeated saves of one file embed once.
+                        awk '!seen[$0]++' "$BATCH" 2>/dev/null | while IFS=$'\t' read -r Q_VAULT Q_REL; do
+                            [[ -z "$Q_VAULT" || -z "$Q_REL" ]] && continue
+                            node "$REINDEX_BIN" "$Q_VAULT" "$Q_REL" >/dev/null 2>>"$REINDEX_DIR/drain.log" || \
+                                printf '[cortex-vault] reindex failed: %s\n' "$Q_REL" >> "$REINDEX_DIR/drain.log"
+                        done
+                        rm -f "$BATCH" 2>/dev/null || true
+                    done
+                ) >/dev/null 2>&1 &
+                disown 2>/dev/null || true
+            fi
         fi
     fi
 fi

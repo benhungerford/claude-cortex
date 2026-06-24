@@ -1,0 +1,5 @@
+{
+  "session_id": "test-granola",
+  "hook_event_name": "UserPromptSubmit",
+  "user_prompt": "Meeting notes from today's sync\n\n**Ben:** Let's review where we are on the PO system.\n**Ashley:** The form is built, just need the success page.\n**Ben:** Great. What about the QA pass?\n**Ashley:** Targeting next week.\n**Ben:** And the email receipts?\n**Ashley:** Done and tested.\n**Ben:** Perfect. Any blockers?\n**Ashley:** Waiting on the payment gateway keys.\n**Ben:** I'll chase those today.\n**Ashley:** Thanks. Also the homepage copy.\n**Ben:** Assign that to Maria.\n**Ashley:** Will do.\n**Ben:** Anything else?\n**Ashley:** That's it from me.\n**Ben:** Great, let's wrap.\n**Ashley:** Talk next week.\n**Ben:** Bye.\n**Ashley:** Bye.\n**Ben:** One more thing \u2014 invoices.\n**Ashley:** Already handled.\n**Ben:** Excellent.\n"
+}
