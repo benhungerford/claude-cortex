@@ -84,7 +84,15 @@ class TestCanonicalSections(unittest.TestCase):
             self.assertIn(s, self.text, f"canonical menu missing: {s}")
 
     def test_youtube_not_in_default_menu(self):
-        # YouTube may be mentioned as opt-in, but must be explicitly marked so.
+        # YouTube must not appear inside the default-menu markdown table
+        # (the table runs from the "| # |" header to the next ## heading).
+        table_match = re.search(r"\| # \|.*?(?=\n##|\Z)", self.text, re.DOTALL)
+        if table_match:
+            self.assertNotIn(
+                "YouTube", table_match.group(),
+                "YouTube must not appear in the default-menu table",
+            )
+        # If YouTube appears anywhere, it must be explicitly marked opt-in nearby.
         if "YouTube" in self.text:
             self.assertRegex(self.text, r"YouTube[\s\S]{0,120}(opt-in|explicit)")
 
