@@ -36,7 +36,7 @@ PART 4 — ROUTE & FILE (autonomy rules)
   file it into the correct folder; add frontmatter with QUOTED tags; add a
   `*Related:* [[_MOC]]` footer; update the folder's _MOC; append_changelog.
 - Ambiguous: move to _Inbox/ and flag it in the Inbox Residue section.
-- NEVER delete content. NEVER overwrite a note silently. Never duplicate notes.
+- NEVER delete content. NEVER overwrite a note silently. NEVER create a duplicate.
 
 PART 5 — ASSEMBLE BRIEFING
 Build the briefing body from these sections, in this order:

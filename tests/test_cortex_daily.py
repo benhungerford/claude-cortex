@@ -59,7 +59,8 @@ class TestSkeleton(unittest.TestCase):
         low = self.text.lower()
         self.assertIn("_inbox", low)
         self.assertIn("never delete", low)
-        self.assertIn("never duplicate", low)
+        self.assertIn("never create a duplicate", low)
+        self.assertIn("never overwrite", low)
 
     def test_has_section_injection_marker(self):
         self.assertIn("<!-- INJECT: SECTION BODIES -->", self.text)
