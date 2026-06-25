@@ -161,5 +161,16 @@ class TestWorkflow(unittest.TestCase):
             self.assertIn(kw, self.low, f"workflow missing edge case: {kw}")
 
 
+class TestWiring(unittest.TestCase):
+    def test_trigger_phrases_lists_cortex_daily(self):
+        self.assertIn("cortex-daily", read_repo("references/trigger-phrases.md"))
+
+    def test_progressive_features_handoff(self):
+        text = read_repo("references/progressive-features.md")
+        self.assertIn("cortex-daily", text)
+        # handoff must be associated with the daily_briefing feature
+        self.assertRegex(text, r"daily_briefing[\s\S]{0,400}cortex-daily")
+
+
 if __name__ == "__main__":
     unittest.main()
