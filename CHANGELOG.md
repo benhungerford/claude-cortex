@@ -1,5 +1,17 @@
 # Claude Cortex Plugin — Changelog
 
+## v1.4.2 — 2026-06-25
+
+**Daily-use audit — Wave 3 (polish).**
+
+- **W3.1 `thread_meeting`:** series-link threshold 3→2; structured JSON skip states; "file not on disk yet" downgraded from hard error to retryable skip.
+- **W3.2 capture:** write modes (silent/confirm/explicit-only); per-turn batched capture hint instead of per-write spam; stop-hook surfaces flushed memory content.
+- **W3.3 dormant features:** iterate all features declared in `personality.md` (was hardcoded `weekly_review`) with 7-day per-feature suppression; `user-prompt-submit` writes real teaching signals to `pending-signals.json`.
+- **W3.4 triggers:** curly-quote normalization; new "we got X" / "file as a reference" triggers; bare "reusable" now requires a phrase anchor.
+- **W3.5 status + boot:** more status phrasings ("on track", "catch me up", ESL forms); project names surfaced alongside buckets in L1/L2 boot.
+- **W3.6 hygiene:** session-cache singletons namespaced per session; stale namespaces (>24h) swept.
+- **W3.7 concurrency:** hub writes use `updateFileAtomic` + `ConcurrencyError` (`O_EXCL` lock + sha256 CAS); `open_question` read-modify-write now atomic with retries.
+
 ## v1.4.1 — 2026-06-24
 
 **Cowork / hookless-surface reliability.**
