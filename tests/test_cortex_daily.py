@@ -71,5 +71,27 @@ class TestSkeleton(unittest.TestCase):
         self.assertIn("append_changelog", low)
 
 
+class TestCanonicalSections(unittest.TestCase):
+    def setUp(self):
+        self.text = read("assets/canonical-sections.md")
+
+    def test_default_sections_present(self):
+        for s in [
+            "Action Items", "Health Flags", "Follow-up", "Pipeline Summary",
+            "Email Triage", "Task / PM Activity", "Meetings", "Calendar",
+            "Active Project Status", "Inbox Residue", "Changelog",
+        ]:
+            self.assertIn(s, self.text, f"canonical menu missing: {s}")
+
+    def test_youtube_not_in_default_menu(self):
+        # YouTube may be mentioned as opt-in, but must be explicitly marked so.
+        if "YouTube" in self.text:
+            self.assertRegex(self.text, r"YouTube[\s\S]{0,120}(opt-in|explicit)")
+
+    def test_connector_type_column_present(self):
+        for t in ["email", "project-management", "transcript", "calendar"]:
+            self.assertIn(t, self.text, f"missing connector type: {t}")
+
+
 if __name__ == "__main__":
     unittest.main()
