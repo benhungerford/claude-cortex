@@ -172,5 +172,20 @@ class TestWiring(unittest.TestCase):
         self.assertRegex(text, r"daily_briefing[\s\S]{0,400}cortex-daily")
 
 
+class TestScenariosDoc(unittest.TestCase):
+    def test_scenarios_cover_cortex_daily(self):
+        text = read_repo("tests/scenarios.md")
+        self.assertIn("cortex-daily", text)
+        low = text.lower()
+        self.assertIn("refresh", low)
+        self.assertIn("no connector", low)
+
+    def test_readme_lists_skill(self):
+        self.assertIn("cortex-daily", read_repo("README.md"))
+
+    def test_changelog_mentions_skill(self):
+        self.assertIn("cortex-daily", read_repo("CHANGELOG.md"))
+
+
 if __name__ == "__main__":
     unittest.main()

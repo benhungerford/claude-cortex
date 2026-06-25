@@ -526,3 +526,45 @@ The title hint in the paste is "FKT Standup 2026-04-08" (or derivable from conte
 **Expected chat output:** "Growth report written for 2026-04-04 to 2026-04-11. Key finding: {{one-line summary}}."
 
 **Failure mode to exercise:** Empty `_signals.log` before running. The skill should write a short report noting the quiet period without fabricating patterns.
+
+---
+
+## Scenario 14 — "set up my daily routine" → cortex-daily generates a prompt
+
+**Trigger phrase(s) or structural signal:** Literal: `set up my daily routine`. Row 22 of the routing table.
+
+**Pre-conditions:**
+- Baseline vault state. At least two connectors live (e.g. one email type + one project-management type). No `.claude/cortex/daily-routine.md` yet.
+
+**User input:** `set up my daily routine`
+
+**Expected routing:** cortex-daily.
+
+**Expected behavior:** Auto-detects vault, projects, and the two connectors by type. Presents the inferred profile + auto-filtered canonical menu. Runs the section interview. Assembles the prompt from the locked skeleton + composed bodies.
+
+**Expected mutations:** Creates `.claude/cortex/daily-routine.md` (metadata header + fenced prompt). Appends a CREATED entry to `_changelog.txt`. No other vault writes.
+
+**Expected chat output:** The full fenced prompt + an instruction to paste it into a new Claude Routine at the chosen time.
+
+**Failure mode to exercise:** Remove `personality.md` → cortex-daily stops and routes to cortex-onboarding instead of generating.
+
+---
+
+## Scenario 15 — re-run refreshes via diff
+
+**Trigger phrase(s) or structural signal:** Explicit invocation `/cortex-daily`.
+
+**Pre-conditions:**
+- Baseline vault state. `.claude/cortex/daily-routine.md` exists from Scenario 14. One new project added; one connector removed since.
+
+**User input:** `/cortex-daily`
+
+**Expected routing:** cortex-daily (refresh/diff mode).
+
+**Expected behavior:** Reads the saved metadata header, computes the delta, shows "+1 project, −<connector>", PRESERVES prior section choices, applies only deltas.
+
+**Expected mutations:** Rewrites `.claude/cortex/daily-routine.md`; appends an UPDATED entry to `_changelog.txt`.
+
+**Expected chat output:** The diff summary + the refreshed fenced prompt.
+
+**Failure mode to exercise:** No connectors live → generates a briefing-only routine (vault-internal sections only) and notes connector sections unlock later. ("no connector" state.)

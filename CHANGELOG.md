@@ -1,5 +1,9 @@
 # Claude Cortex Plugin — Changelog
 
+## Unreleased
+
+- **cortex-daily skill** — New generator skill that emits a tailored, copy-paste prompt for a Claude Routine running the unattended daily pipeline (connector pull → dedup → file → stepped briefing). Connector-agnostic, fully customizable sections, chat + saved copy with diff-based refresh. Wired into the dormant `daily_briefing` activation.
+
 ## v1.4.1 — 2026-06-24
 
 **Cowork / hookless-surface reliability.**

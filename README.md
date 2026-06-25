@@ -24,7 +24,8 @@ claude-cortex/
 │   ├── cortex-knowledge/       # extract reusable patterns to Knowledge Base
 │   ├── cortex-coach/           # adaptive skill development coaching
 │   ├── cortex-onboarding/      # first-run setup
-│   └── cortex-extend/         # create custom companion skills
+│   ├── cortex-extend/         # create custom companion skills
+│   └── cortex-daily/          # generate copy-paste Claude Routine prompt for daily pipeline
 ├── commands/                # 8 slash commands (cortex-capture, cortex-status, cortex-index, etc.)
 ├── hooks/                   # 4 lifecycle hooks
 │   ├── session-start        # vault context + trigger phrase cache
