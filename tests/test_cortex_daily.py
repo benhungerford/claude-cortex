@@ -121,9 +121,17 @@ class TestSectionLibrary(unittest.TestCase):
         self.assertRegex(self.text, r"YouTube[\s\S]{0,160}(opt-in|explicit)")
 
     def test_connector_recipes_note_dedup_inheritance(self):
-        low = self.text.lower()
-        self.assertIn("dedup", low)
-        self.assertIn("part 2", low)
+        # Each connector-typed recipe must state it inherits the PART 2 dedup guard.
+        # Split the doc into recipe blocks by "###" headings and check the four
+        # connector recipes individually, not just the document as a whole.
+        import re as _re
+        blocks = _re.split(r"\n###\s+", self.text)
+        connector_keywords = ["Email", "Task / PM", "Meetings", "Calendar"]
+        for kw in connector_keywords:
+            block = next((b for b in blocks if b.startswith(kw)), None)
+            self.assertIsNotNone(block, f"no recipe block for: {kw}")
+            self.assertIn("part 2", block.lower(),
+                          f"recipe '{kw}' must state PART 2 dedup inheritance")
 
 
 if __name__ == "__main__":

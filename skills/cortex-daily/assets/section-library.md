@@ -68,7 +68,7 @@ Inherits PART 2 dedup.
 ### Calendar  (connector type: calendar — Google Calendar, Outlook Calendar, …)
 Using the live calendar connector(s), surface today's agenda and flag events
 needing prep (no agenda, external attendees, tied to a blocked project).
-Inherits PART 2 dedup.
+Inherits PART 2 dedup (use the event id as the key when the section emits a note or task; pure agenda surfacing creates nothing to dedup).
 
 ---
 
