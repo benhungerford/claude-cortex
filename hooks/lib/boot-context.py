@@ -523,17 +523,110 @@ def apply_token_budget(output, budget_chars):
         }
 
 
-def check_dormant_features(personality_content, changelog_total):
-    """Check if any dormant features should be suggested. Returns string or None."""
-    if changelog_total < 50:
-        return None
+def _parse_dormant_features(personality_content):
+    """Extract dormant feature names from personality.md frontmatter.
+
+    Handles BOTH declared shapes:
+      - feature: "weekly_review"     (doc-rich form, progressive-features.md)
+      - name: weekly_review          (compact form, used by onboarding/tests)
+    Returns an ordered list of feature-name strings (deduped, order preserved).
+    """
     fm_match = re.search(r'^---\s*\n(.*?)\n---', personality_content, re.DOTALL)
     if not fm_match:
-        return None
+        return []
     fm = fm_match.group(1)
-    dormant_match = re.search(r'dormant:\s*\n((?:\s+- .*\n)*)', fm)
-    if dormant_match and "weekly_review" in dormant_match.group(1):
-        return f"weekly_review may be ready to activate (changelog has {changelog_total}+ entries)"
+    # Capture the dormant: block — list items until the next same-or-lower
+    # indented key. Lines belonging to the block are more-indented than
+    # "dormant:" (which itself sits under progressive_features).
+    dormant_match = re.search(r'\n(\s*)dormant:\s*\n((?:\1\s+.*\n?)*)', fm)
+    if not dormant_match:
+        return []
+    block = dormant_match.group(2)
+    names = []
+    for m in re.finditer(r'-\s*(?:feature|name)\s*:\s*"?([A-Za-z0-9_]+)"?', block):
+        nm = m.group(1)
+        if nm and nm not in names:
+            names.append(nm)
+    return names
+
+
+def _dormant_state_path(vault_path):
+    return os.path.join(vault_path, ".claude", "cortex", "dormant-suggested.json")
+
+
+def _read_dormant_state(vault_path):
+    """Read per-feature last_suggested map. Returns dict {feature: 'YYYY-MM-DD'}."""
+    path = _dormant_state_path(vault_path)
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError, UnicodeDecodeError, OSError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _write_dormant_state(vault_path, state):
+    """Persist per-feature last_suggested map. Best-effort, atomic-ish."""
+    path = _dormant_state_path(vault_path)
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(state, f)
+        os.replace(tmp, path)
+    except OSError:
+        pass
+
+
+def check_dormant_features(personality_content, changelog_total, vault_path=None,
+                           today=None, suppress_days=7):
+    """Suggest the next dormant feature ready to activate, with 7-day suppression.
+
+    W3.3 (T21): generalized from the old single hardcoded `weekly_review` check.
+    Iterates ALL dormant features declared in personality.md (in declared order,
+    the doc's first-ready / priority proxy). The activation signal is still the
+    coarse changelog-volume gate (>=50 entries) the boot path can evaluate
+    cheaply; richer per-feature signals belong in the MCP `check_dormant_features`
+    tool. To avoid re-suggesting the same feature every session, each suggestion
+    writes a per-feature `last_suggested` date to
+    `<vault>/.claude/cortex/dormant-suggested.json` and is suppressed for
+    `suppress_days` (~7) days. Returns a suggestion string or None.
+    """
+    if changelog_total < 50:
+        return None
+    features = _parse_dormant_features(personality_content)
+    if not features:
+        return None
+
+    if today is None:
+        from datetime import date
+        today = date.today()
+    else:
+        from datetime import date
+        if isinstance(today, str):
+            today = date.fromisoformat(today)
+
+    from datetime import date as _date
+
+    state = _read_dormant_state(vault_path) if vault_path else {}
+
+    for feat in features:
+        last = state.get(feat)
+        if last:
+            try:
+                last_d = _date.fromisoformat(str(last))
+                if (today - last_d).days < suppress_days:
+                    continue  # still in cooldown — skip
+            except ValueError:
+                pass  # malformed date → treat as never suggested
+        # This feature is eligible. Record the suggestion and return it.
+        if vault_path:
+            state[feat] = today.isoformat()
+            _write_dormant_state(vault_path, state)
+        return (
+            f"{feat} may be ready to activate (changelog has {changelog_total}+ "
+            f"entries). Want me to turn it on?"
+        )
     return None
 
 
@@ -604,11 +697,32 @@ def main():
             "default": True,
         }
 
-    # Check dormant features
-    feature_suggestion = check_dormant_features(personality, changelog_total)
+    # Check dormant features (W3.3: generalized + 7-day per-feature suppression).
+    feature_suggestion = check_dormant_features(
+        personality, changelog_total, vault_path=vault_path
+    )
 
-    # Extract bucket list for L1/L2
-    active_projects = extract_buckets(personality) if activation_level < 3 else None
+    # Extract bucket list for L1/L2 (W3.5: also surface registered project NAMES,
+    # not just bucket names, so an L1/L2 session has concrete project anchors).
+    active_projects = None
+    if activation_level < 3:
+        buckets = extract_buckets(personality)
+        project_names = [
+            derive_project_name(p) for p in registry.get("projects", [])
+        ]
+        project_names = [n for n in project_names if n]
+        parts = []
+        if buckets:
+            parts.append(f"Buckets: {buckets}")
+        if project_names:
+            # Cap so a large registry can't blow the boot budget.
+            shown = project_names[:12]
+            more = len(project_names) - len(shown)
+            names_str = ", ".join(shown)
+            if more > 0:
+                names_str += f", +{more} more"
+            parts.append(f"Projects: {names_str}")
+        active_projects = " | ".join(parts) if parts else (buckets or None)
 
     output = {
         "vault_path": vault_path,

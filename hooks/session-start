@@ -17,10 +17,66 @@ fi
 # Allow test override, otherwise default
 CONFIG_FILE="${CORTEX_BOOT_CONFIG:-$HOME/.claude/cortex/config.json}"
 
+# ── Read stdin (carries session_id) ─────────────────────────────────────────
+# All three lifecycle hooks (session-start, post-tool-use, stop) receive the
+# SAME session_id in their stdin payload within one Claude session, so deriving
+# the cache namespace from it keeps concurrent sessions from clobbering each
+# other's singleton files. SessionStart input may be empty on some platforms;
+# guard the read so `set -e` never trips on a closed stdin.
+INPUT=""
+if [[ ! -t 0 ]]; then
+    INPUT="$(cat 2>/dev/null || true)"
+fi
+
 # ── Check python3 ───────────────────────────────────────────────────────────
 
 if ! command -v python3 &>/dev/null; then
     exit 0
+fi
+
+# ── Session-cache namespace derivation (W3.6) ───────────────────────────────
+# KEEP IN SYNC with hooks/post-tool-use and hooks/stop.
+# Deterministic per-session namespace so concurrent sessions don't share the
+# session-cache singletons (vault-path.txt, pending-*.json, reindex queue).
+# Priority: session_id from the stdin payload → $CLAUDE_SESSION_ID env →
+# a stable hash of the cwd → the literal "default". The result is sanitized to
+# [A-Za-z0-9_-] and length-capped so it is always a safe directory name.
+cortex_session_ns() {
+    local raw=""
+    raw="$(printf '%s' "${1:-}" | python3 -c "
+import json, sys
+try:
+    print(json.loads(sys.stdin.read()).get('session_id', '') or '', end='')
+except Exception:
+    pass
+" 2>/dev/null || true)"
+    if [[ -z "$raw" ]]; then
+        raw="${CLAUDE_SESSION_ID:-}"
+    fi
+    if [[ -z "$raw" ]]; then
+        # Stable hash of cwd. shasum is on macOS; sha1sum on Linux.
+        local h=""
+        if command -v shasum &>/dev/null; then
+            h="$(printf '%s' "${PWD:-/}" | shasum 2>/dev/null | cut -c1-16)"
+        elif command -v sha1sum &>/dev/null; then
+            h="$(printf '%s' "${PWD:-/}" | sha1sum 2>/dev/null | cut -c1-16)"
+        fi
+        raw="cwd-${h:-unknown}"
+    fi
+    # Sanitize to a safe directory token.
+    raw="$(printf '%s' "$raw" | tr -c 'A-Za-z0-9_-' '_' )"
+    raw="${raw:0:64}"
+    printf '%s' "${raw:-default}"
+}
+
+SESSION_NS="$(cortex_session_ns "$INPUT")"
+
+# ── Sweep stale namespaces (>24h) ───────────────────────────────────────────
+# Old per-session cache dirs accumulate one-per-session forever otherwise.
+# Best-effort: never fails the hook.
+NS_ROOT="$PLUGIN_DATA/session-cache/ns"
+if [[ -d "$NS_ROOT" ]]; then
+    find "$NS_ROOT" -mindepth 1 -maxdepth 1 -type d -mtime +1 -exec rm -rf {} + 2>/dev/null || true
 fi
 
 # ── Call Python module ──────────────────────────────────────────────────────
@@ -36,13 +92,25 @@ fi
 # ── Cache vault path for other hooks ────────────────────────────────────────
 # (Reference files in references/*.md are read directly by skills; user-prompt-submit
 # uses hardcoded patterns. No reason to mirror them into plugin-data.)
+#
+# W3.6: cache files live under a per-session namespace dir so two concurrent
+# sessions never clobber each other's singletons. We also mirror vault-path.txt
+# to the legacy top-level location for backward compatibility with any reader
+# that hasn't been namespaced yet — but the namespaced copy is authoritative.
 
 CACHE_DIR="$PLUGIN_DATA/session-cache"
-mkdir -p "$CACHE_DIR"
+NS_DIR="$CACHE_DIR/ns/$SESSION_NS"
+mkdir -p "$NS_DIR"
 
-# Cache vault path for other hooks
-python3 -c "import json,sys; print(json.loads(sys.stdin.read())['vault_path'], end='')" \
-    <<< "$BOOT_JSON" > "$CACHE_DIR/vault-path.txt"
+# Truncate the legacy top-level vault-path.txt at the top of session-start so a
+# stale path from a previous session can never leak into this one before we
+# rewrite it below.
+: > "$CACHE_DIR/vault-path.txt" 2>/dev/null || true
+
+# Cache vault path for other hooks (namespaced + legacy mirror).
+VAULT_PATH_VALUE="$(python3 -c "import json,sys; print(json.loads(sys.stdin.read())['vault_path'], end='')" <<< "$BOOT_JSON")"
+printf '%s' "$VAULT_PATH_VALUE" > "$NS_DIR/vault-path.txt"
+printf '%s' "$VAULT_PATH_VALUE" > "$CACHE_DIR/vault-path.txt"
 
 # ── Build session block ─────────────────────────────────────────────────────
 

@@ -1,0 +1,5 @@
+{
+  "session_id": "test-session-001",
+  "hook_event_name": "UserPromptSubmit",
+  "user_prompt": "Good news — we got the API keys from the client."
+}

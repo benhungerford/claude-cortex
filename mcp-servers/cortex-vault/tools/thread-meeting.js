@@ -191,11 +191,24 @@ async function handler(args, vaultOverride) {
     effectiveGroup = [...titleGroup, newParsed].sort((a, b) => a.date.localeCompare(b.date));
   }
 
-  if (effectiveGroup.length < 3) {
+  // W3.1 (T14): link threshold lowered from 3 to 2 so the 2nd note of a series
+  // is threaded instead of being a silent orphan. When the precondition is NOT
+  // met, surface a machine-readable skip state so the caller can see WHY.
+  const LINK_THRESHOLD = 2;
+  if (effectiveGroup.length < LINK_THRESHOLD) {
     return {
       content: [{
         type: 'text',
-        text: `Series "${newParsed.title}" has ${effectiveGroup.length} note(s) — need at least 3 to thread. Skipping.`
+        text: JSON.stringify({
+          threaded: false,
+          skipped: true,
+          reason: 'series-too-short',
+          new_file: new_file,
+          series: newParsed.title,
+          series_count: effectiveGroup.length,
+          threshold: LINK_THRESHOLD,
+          message: `Series "${newParsed.title}" has ${effectiveGroup.length} note(s) — need at least ${LINK_THRESHOLD} to thread. Skipping. Re-run thread_meeting once a second note in this series exists.`
+        }, null, 2)
       }]
     };
   }
@@ -206,7 +219,15 @@ async function handler(args, vaultOverride) {
     return {
       content: [{
         type: 'text',
-        text: `"${new_file}" is the earliest in the series — nothing to thread backwards.`
+        text: JSON.stringify({
+          threaded: false,
+          skipped: true,
+          reason: 'earliest-in-series',
+          new_file: new_file,
+          series: newParsed.title,
+          series_count: effectiveGroup.length,
+          message: `"${new_file}" is the earliest in the series — nothing to thread backwards.`
+        }, null, 2)
       }]
     };
   }
@@ -219,12 +240,22 @@ async function handler(args, vaultOverride) {
   const newFilePath = path.join(notesDirAbs, new_file);
   const newContent = readFile(newFilePath);
   if (newContent === null) {
+    // W3.1 (T14): the new note isn't written yet. This is a documented, retryable
+    // precondition — surface it as a structured skip (not a hard error) so the
+    // caller can write the note and re-run thread_meeting.
     return {
       content: [{
         type: 'text',
-        text: `New file not found on disk: ${new_file} — create it first, then call thread_meeting.`
-      }],
-      isError: true
+        text: JSON.stringify({
+          threaded: false,
+          skipped: true,
+          reason: 'new-file-not-on-disk',
+          new_file: new_file,
+          series: newParsed.title,
+          series_count: effectiveGroup.length,
+          message: `New file not found on disk: ${new_file} — write the note first, then re-run thread_meeting to link the series.`
+        }, null, 2)
+      }]
     };
   }
 

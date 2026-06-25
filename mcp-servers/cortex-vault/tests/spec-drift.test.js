@@ -149,29 +149,29 @@ describe('Check 2 — Trigger-phrase implementation integrity', () => {
     'we decided',        // row 7  -> cortex-update-context
     'new blocker',       // row 8  -> cortex-update-context
     "that's resolved",   // row 9  -> cortex-update-context (resolved capture)
+    'we got',            // row 9  -> cortex-update-context (W3.4 — promoted)
+    'we got the',        // row 9  -> cortex-update-context (W3.4 — promoted)
+    'file as a reference', // row 15 -> cortex-knowledge (W3.4 — promoted)
     'status of',         // row 5  -> cortex-check-status
     'where are we on',   // row 5  -> cortex-check-status
     "what's blocking",   // row 5  -> cortex-check-status
+    'on track',          // row 5  -> cortex-check-status (W3.5 — promoted)
+    'catch me up',       // row 5  -> cortex-check-status (W3.5 — promoted)
     'new project',       // row 10 -> cortex-ingest-project
     'register this repo',// row 17 -> cortex-register-repo
     'teach me',          // row 22 -> cortex-coach
   ];
 
-  // Phrases the audit specifically flagged that the docs imply but the hook
-  // does NOT yet implement. NOT asserted — promote into ASSERTED_PHRASES once
-  // a later wave adds the matching pattern to hooks/user-prompt-submit.
-  //   - "we got" / "we got the": doc row 9 lists "we got <X>" as a
-  //     blocker-resolved capture, but the hook has no such pattern.
-  //   - "on track" / "catch me up": status-style phrasings the audit wants
-  //     routed to cortex-check-status; not present in the hook.
-  const KNOWN_GAPS = [
-    'we got',
-    'we got the',
-    'on track',
-    'catch me up',
-  ];
+  // Phrases the audit flagged that the docs imply but the hook does NOT yet
+  // implement. Promote into ASSERTED_PHRASES once a later wave adds the
+  // matching pattern to hooks/user-prompt-submit.
+  //
+  // W3.4/W3.5 promoted the previous occupants ("we got", "we got the",
+  // "on track", "catch me up", "file as a reference") into ASSERTED_PHRASES
+  // above — there are no remaining tracked gaps in this set today.
+  const KNOWN_GAPS = [];
   // Reference KNOWN_GAPS so it is not dead code and its intent is documented.
-  assert.ok(Array.isArray(KNOWN_GAPS) && KNOWN_GAPS.length > 0);
+  assert.ok(Array.isArray(KNOWN_GAPS));
 
   test('every asserted trigger phrase has a matching pattern in user-prompt-submit', () => {
     const hookPath = path.join(REPO_ROOT, 'hooks', 'user-prompt-submit');

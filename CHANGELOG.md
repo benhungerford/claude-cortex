@@ -7,6 +7,13 @@
 - `hooks/session-start`: the inline block-builder read budget-trimmed fields with `data.get('memory', '').rstrip()`. When `apply_token_budget` drops a field to fit the char budget it sets the key to `None` (not absent), so the `''` default never applied and `None.rstrip()` raised `AttributeError` — the hook exited 1 and no `<cortex-session>` block was emitted, silently falling back to the `get_boot_context` MCP tool. A vault whose `personality.md` alone exceeds the 8000-char default budget triggered this on every session.
 - Made `personality`, `memory`, and `learner_profile` null-safe with `(data.get(x) or '')`. Nulled sections now render empty and the existing `_budget` line flags the trim. `recent_activity` was already truthiness-guarded.
 
+## v1.4.2 — 2026-06-25
+
+**cortex-daily — daily-routine generator skill.**
+
+- **cortex-daily skill** — New generator skill that emits a tailored, copy-paste prompt for a Claude Routine running the unattended daily pipeline (connector pull → dedup → file → stepped briefing). Connector-agnostic (keys off connector type, not vendor), fully customizable sections (YouTube opt-in only), chat + saved copy at `.claude/cortex/daily-routine.md` with diff-based refresh, L1 confirm-before-write. Wired into the dormant `daily_briefing` activation handoff and the trigger table.
+- 28 structural tests (`tests/test_cortex_daily.py`) + 2 behavioral scenarios.
+
 ## v1.4.1 — 2026-06-24
 
 **Cowork / hookless-surface reliability.**

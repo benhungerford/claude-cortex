@@ -539,6 +539,93 @@ Unique meeting, no series.
     const fileContent = fs.readFileSync(path.join(notesDir, oneOffFile), 'utf8');
     assert.ok(!fileContent.includes('*Previous:*'), 'one-off note should not have Previous link');
   });
+
+  // W3.1 (T14): threshold lowered from 3 to 2 — a 2-note series should link.
+  test('threads a 2nd meeting into a new series (threshold = 2)', async () => {
+    const notesDir = path.join(tmpVault, 'Work/TBL/Test Client/Test Project/Notes');
+    // Remove the 3rd fixture note so the series has exactly the 03-01 + 03-08 pair,
+    // then thread the (already on disk) 03-08 note.
+    fs.rmSync(path.join(notesDir, '2026-03-15 Client Check-in.md'));
+
+    const newFile = '2026-03-08 Client Check-in.md';
+    const result = await tool.handler(
+      { notes_dir: 'Work/TBL/Test Client/Test Project/Notes', new_file: newFile },
+      tmpVault
+    );
+
+    assert.equal(result.isError, undefined, 'should not be an error');
+    const data = JSON.parse(result.content[0].text);
+    assert.equal(data.threaded, true, '2-note series should thread');
+    assert.equal(data.series_count, 2, 'series_count should be 2');
+    assert.equal(data.previous, '2026-03-01 Client Check-in.md', 'previous should be the 03-01 note');
+
+    // New note gets *Previous:* to the 03-01 note
+    const newNote = fs.readFileSync(path.join(notesDir, newFile), 'utf8');
+    assert.ok(
+      newNote.includes('*Previous:* [[2026-03-01 Client Check-in]]'),
+      '03-08 note should have Previous link to 03-01'
+    );
+    // Prior note gets *Next:*
+    const priorNote = fs.readFileSync(path.join(notesDir, '2026-03-01 Client Check-in.md'), 'utf8');
+    assert.ok(
+      priorNote.includes('*Next:* [[2026-03-08 Client Check-in]]'),
+      '03-01 note should have Next link to 03-08'
+    );
+  });
+
+  // W3.1 (T14): when the precondition (>= 2 notes) is NOT met, the skip state must
+  // be surfaced in a machine-readable way so the caller can see WHY it skipped.
+  test('surfaces structured skip state when only 1 note exists', async () => {
+    const notesDir = path.join(tmpVault, 'Work/TBL/Test Client/Test Project/Notes');
+    const soloFile = '2026-04-01 Brand New Series.md';
+    const soloContent = `---
+created: 2026-04-01T14:00
+updated: 2026-04-01T15:00
+tags:
+  - "#type/meeting-notes"
+---
+
+# 2026-04-01 Brand New Series
+
+First and only note.
+
+---
+*Related:* [[_MOC]]
+`;
+    fs.writeFileSync(path.join(notesDir, soloFile), soloContent, 'utf8');
+
+    const result = await tool.handler(
+      { notes_dir: 'Work/TBL/Test Client/Test Project/Notes', new_file: soloFile },
+      tmpVault
+    );
+
+    assert.equal(result.isError, undefined, 'skip is not an error');
+    const data = JSON.parse(result.content[0].text);
+    assert.equal(data.threaded, false, 'single note should not thread');
+    assert.equal(data.skipped, true, 'skip state must be surfaced');
+    assert.equal(data.reason, 'series-too-short', 'reason should identify the unmet precondition');
+    assert.equal(data.series_count, 1, 'series_count should reflect the single note');
+    assert.equal(data.threshold, 2, 'threshold should be surfaced');
+  });
+
+  // W3.1 (T14): if the new note is not yet written to disk, the tool must surface a
+  // documented precondition skip (not a hard error) so the caller can retry after writing.
+  test('surfaces a not-yet-written skip when the new file is absent from disk', async () => {
+    const notesDir = path.join(tmpVault, 'Work/TBL/Test Client/Test Project/Notes');
+    // There are already 2+ on-disk notes in the Client Check-in series, but the
+    // "new_file" we pass has NOT been written yet.
+    const newFile = '2026-03-22 Client Check-in.md';
+
+    const result = await tool.handler(
+      { notes_dir: 'Work/TBL/Test Client/Test Project/Notes', new_file: newFile },
+      tmpVault
+    );
+
+    const data = JSON.parse(result.content[0].text);
+    assert.equal(data.threaded, false, 'should not thread when new file is missing');
+    assert.equal(data.skipped, true, 'skip state must be surfaced');
+    assert.equal(data.reason, 'new-file-not-on-disk', 'reason should identify the missing-file precondition');
+  });
 });
 
 // ---------------------------------------------------------------------------

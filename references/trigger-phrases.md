@@ -22,17 +22,17 @@ Update this file first when adding a new skill or changing a trigger. Changes he
 | 2 | Session start, `<vault_path>/personality.md` missing | `cortex-onboarding` | Partial onboarding — resume from where user left off. |
 | 3 | Literal: "first run", "just installed Cortex", "set up my vault", "onboard me" | `cortex-onboarding` | User-invoked onboarding even if vault exists. |
 | 4 | Session start, any runtime, vault present | `cortex-boot` | Always fires first turn to resolve cwd + load memory. |
-| 5 | Literal: "what's the status of <X>", "where are we on <X>", "what's left on <X>", "what's blocking <X>", "status of <X>", "any open questions on <X>" | `cortex-check-status` | X must fuzzy-match a known bucket in `personality.md`. |
+| 5 | Literal: "what's the status of <X>", "where are we on <X>", "what's left on <X>", "what's blocking <X>", "status of <X>", "any open questions on <X>", "is <X> on track", "catch me up on <X>", "what happened with <X>", "give me an update on <X>", "bring me up to speed on <X>", plus ESL forms ("what is the status", "where we at", "what is blocking", "what is left on") | `cortex-check-status` | X must fuzzy-match a known bucket in `personality.md`. ESL/colloquial phrasings (W3.5) routed at confidence:high. |
 | 6 | Literal: "log that", "log this", "log it", "add this to the project", "add that to <X>" | `cortex-update-context` | Explicit write trigger. |
 | 7 | Literal: "we decided", "decision:", "I'm going with", "going to go with", "final answer is", "we're using <X>" | `cortex-update-context` | Decision capture. |
 | 8 | Literal: "new blocker", "blocker:", "this is blocking", "blocked by", "can't proceed until" | `cortex-update-context` | New-blocker capture. |
-| 9 | Literal: "that's resolved", "blocker resolved", "unblocked", "we got <X>" (where X is a previously-logged blocker) | `cortex-update-context` | Blocker-resolved capture. |
+| 9 | Literal: "that's resolved", "blocker resolved", "unblocked" (confidence:high); "we got <X>", "we got the <X>" (confidence:medium — skill confirms which blocker cleared) | `cortex-update-context` | Blocker-resolved capture. Curly apostrophes (U+2019) are normalized to straight before matching, so "that's resolved" matches whether smart-quoted or not (W3.4). |
 | 10 | Literal: "new project", "start tracking", "I'm starting a new <project_term>", "scaffold a project for <X>" | `cortex-ingest-project` | |
 | 11 | Structural: user pastes a long block of text (5+ lines) that looks like a project brief (mentions goals, deadlines, deliverables, stakeholders) and no existing project matches | `cortex-ingest-project` | Heuristic — if uncertain, ask "is this a new project or an update to <X>?" |
 | 12 | Structural: user pastes a transcript — 20+ lines with speaker labels in any common form: `Name:`, multi-word `First Last:`, Granola `**Name:**`, Fathom `[HH:MM] Name:`, or bullet/dash `- Name:`. Speaker lines must be ≥25% of total lines (density), and the paste must not be a metadata/citation block (Author/Title/DOI/Year/Journal). | `cortex-process-meeting` | **Timestamped** (`[HH:MM]`) → confidence:high, hard route. **No temporal marker** → confidence:medium; the skill asks "file this as a meeting, or just keep as context?" rather than hard-filing. |
 | 13 | Literal: "process this meeting", "here are the notes from <X>", "meeting notes:", "from my call with <X>" | `cortex-process-meeting` | |
 | 14 | Structural: Granola / Fathom MCP tool returned a transcript in the current turn | `cortex-process-meeting` | Hard route. |
-| 15 | Literal: "reusable", "worth remembering", "add to knowledge base", "file as a reference", "save this pattern", "for future projects" | `cortex-knowledge` | |
+| 15 | Literal: "worth remembering", "add to knowledge base", "file as a reference", "save this pattern", "for future projects", "this is reusable", "that's reusable", "reusable pattern", "reusable knowledge" | `cortex-knowledge` | Bare "reusable" alone no longer fires (over-matched "reusable component" mid-discussion); it now needs a phrase anchor (W3.2/W3.4). |
 | 16 | Structural: conversation reveals a vendor quirk, library gotcha, or recipe not specific to the current project | `cortex-knowledge` | Soft trigger — ask user "want me to extract this to Knowledge Base?" |
 | 17 | Literal: "register this repo", "link this folder", "link this repo to a project", "this repo is for <project>" | `cortex-register-repo` | |
 | 18 | Literal: "scan for repos", "backfill repos", "find my project folders", "register all my repos" | `cortex-register-repo` | Backfill operation. |
@@ -40,6 +40,7 @@ Update this file first when adding a new skill or changing a trigger. Changes he
 | 20 | Literal: "what project am I in", "what repo is this", "which project is this cwd" | `cortex-register-repo` | Read-only lookup. |
 | 21 | Literal: "I want Cortex to...", "add a skill that...", "extend Cortex to...", "make Cortex do...", "create a custom skill", "build me a skill", "can Cortex learn to..." | `cortex-extend` | Hands off to skill-creation flow with Cortex compatibility rules. |
 | 22 | Literal: "teach me", "teach me about", "teach me how", "teach me why", "what should I be learning", "where can I improve", "coach me", "how could I do this better", "what am I missing", "review my approach", "skill check", "growth check" | `cortex-coach` | On-demand coaching. Reads vault state + Claude expertise to deliver tailored guidance. |
+| 23 | Literal: "set up my daily routine", "build my daily briefing", "create a daily pipeline", "/cortex-daily", "generate my morning routine" | `cortex-daily` | Generator: emits a copy-paste Claude Routine prompt for the unattended daily pipeline. |
 
 ---
 
