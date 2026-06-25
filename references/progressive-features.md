@@ -57,6 +57,9 @@ progressive_features:
       activation_prompt: >
         You have <N> active projects with open blockers. Want a daily briefing
         each morning that surfaces what needs attention?
+      # On "yes", hand off to the cortex-daily skill, which generates the
+      # routine prompt. The activation does not build the routine itself.
+      handoff_skill: "cortex-daily"
       cooldown_days: 30
     # ... more dormant features
 
@@ -120,6 +123,8 @@ When the user accepts a suggestion:
 2. Set `activated: <today>` and `reason: "<why — one sentence derived from the signal that fired>"`
 3. Log to `_changelog.txt` as `STATUS_CHANGED`
 4. Immediately apply the feature for the rest of the current session (don't make the user wait for a new session)
+
+When the user accepts the `daily_briefing` activation offer, route to `cortex-daily` to generate the routine prompt rather than producing a one-off briefing.
 
 When the user declines:
 
