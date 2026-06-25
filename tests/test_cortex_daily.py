@@ -134,5 +134,32 @@ class TestSectionLibrary(unittest.TestCase):
                           f"recipe '{kw}' must state PART 2 dedup inheritance")
 
 
+class TestWorkflow(unittest.TestCase):
+    def setUp(self):
+        self.text = read("workflows/generate-routine.md")
+        self.low = self.text.lower()
+
+    def test_seven_runtime_steps(self):
+        for kw in ["resolve", "auto-detect", "confirm", "interview",
+                   "assemble", "emit", "instruct"]:
+            self.assertIn(kw, self.low, f"workflow missing step keyword: {kw}")
+
+    def test_connector_type_detection(self):
+        for t in ["email", "project-management", "transcript", "calendar"]:
+            self.assertIn(t, self.text)
+
+    def test_saved_copy_path_and_header(self):
+        self.assertIn(".claude/cortex/daily-routine.md", self.text)
+        self.assertRegex(self.low, r"metadata header")
+
+    def test_diff_refresh_mode(self):
+        self.assertIn("diff", self.low)
+        self.assertRegex(self.low, r"preserv\w* .*section choices|prior section choices")
+
+    def test_edge_cases_documented(self):
+        for kw in ["no connectors", "personality.md", "missing"]:
+            self.assertIn(kw, self.low, f"workflow missing edge case: {kw}")
+
+
 if __name__ == "__main__":
     unittest.main()
