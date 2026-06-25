@@ -531,7 +531,7 @@ The title hint in the paste is "FKT Standup 2026-04-08" (or derivable from conte
 
 ## Scenario 14 — "set up my daily routine" → cortex-daily generates a prompt
 
-**Trigger phrase(s) or structural signal:** Literal: `set up my daily routine`. Row 22 of the routing table.
+**Trigger phrase(s) or structural signal:** Literal: `set up my daily routine`. Routed via the cortex-daily trigger in the routing table.
 
 **Pre-conditions:**
 - Baseline vault state. At least two connectors live (e.g. one email type + one project-management type). No `.claude/cortex/daily-routine.md` yet.

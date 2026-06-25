@@ -14,7 +14,7 @@ claude-cortex/
 │   ├── plugin.json          # plugin manifest
 │   └── marketplace.json     # local marketplace
 ├── .mcp.json                # cortex-vault MCP server registration
-├── skills/                  # 10 focused skills
+├── skills/                  # 11 focused skills
 │   ├── cortex-boot/         # always-on session bootstrap
 │   ├── cortex-check-status/ # read-only project status
 │   ├── cortex-update-context/ # write decisions, blockers, scope changes
