@@ -150,15 +150,15 @@ elif data.get('active_projects'):
 
 lines.append('')
 lines.append('<cortex-personality>')
-lines.append(data.get('personality', '').rstrip())
+lines.append((data.get('personality') or '').rstrip())
 lines.append('</cortex-personality>')
 
 lines.append('')
 lines.append('<cortex-memory>')
-lines.append(data.get('memory', '').rstrip())
+lines.append((data.get('memory') or '').rstrip())
 lines.append('</cortex-memory>')
 
-lp = data.get('learner_profile', '')
+lp = data.get('learner_profile') or ''
 if lp.strip():
     lines.append('')
     lines.append('<cortex-learner-profile>')

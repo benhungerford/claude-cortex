@@ -1,5 +1,12 @@
 # Claude Cortex Plugin — Changelog
 
+## v1.4.3 — 2026-06-25
+
+**Boot hook crash fix.**
+
+- `hooks/session-start`: the inline block-builder read budget-trimmed fields with `data.get('memory', '').rstrip()`. When `apply_token_budget` drops a field to fit the char budget it sets the key to `None` (not absent), so the `''` default never applied and `None.rstrip()` raised `AttributeError` — the hook exited 1 and no `<cortex-session>` block was emitted, silently falling back to the `get_boot_context` MCP tool. A vault whose `personality.md` alone exceeds the 8000-char default budget triggered this on every session.
+- Made `personality`, `memory`, and `learner_profile` null-safe with `(data.get(x) or '')`. Nulled sections now render empty and the existing `_budget` line flags the trim. `recent_activity` was already truthiness-guarded.
+
 ## v1.4.2 — 2026-06-25
 
 **cortex-daily — daily-routine generator skill.**
