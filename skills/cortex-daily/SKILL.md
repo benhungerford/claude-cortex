@@ -53,6 +53,7 @@ Run `workflows/generate-routine.md`. It covers:
 - Sections key off connector **type**, never a hardcoded vendor. The composed body names the actual detected tool.
 - Never propose the YouTube section; surface it only if the user explicitly asks.
 - If `personality.md` is missing, stop and route to `cortex-onboarding`.
+- Respect the activation level: at L1 (passive sessions), confirm with the user before writing the saved `.claude/cortex/daily-routine.md` copy. At L2+ the save proceeds (it is explicit user intent). Always print the prompt to chat regardless of level.
 
 ## What this skill does NOT do
 

@@ -160,6 +160,11 @@ class TestWorkflow(unittest.TestCase):
         for kw in ["no connectors", "personality.md", "missing"]:
             self.assertIn(kw, self.low, f"workflow missing edge case: {kw}")
 
+    def test_l1_warns_before_saving(self):
+        # Spec: at L1 the skill warns/confirms before writing the saved copy.
+        self.assertIn("l1", self.low)
+        self.assertRegex(self.low, r"l1[\s\S]{0,200}(warn|confirm)")
+
 
 class TestWiring(unittest.TestCase):
     def test_trigger_phrases_lists_cortex_daily(self):

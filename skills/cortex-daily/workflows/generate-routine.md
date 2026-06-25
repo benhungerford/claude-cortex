@@ -45,6 +45,7 @@ drop it or keep it as a manual placeholder.
 - Do NOT edit any locked rail.
 
 ## Step 6 — Emit and save
+- Activation level: at L1 (passive), warn and confirm with the user before writing the saved `.claude/cortex/daily-routine.md` file. At L2+ write it directly. The chat copy is always printed.
 - Print the full assembled prompt to chat inside a fenced block for clean copy.
 - Write `.claude/cortex/daily-routine.md` with a **metadata header** then the prompt:
 
