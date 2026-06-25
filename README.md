@@ -191,6 +191,7 @@ For Claude Desktop, use `scripts/install-desktop.sh` to mirror the plugin into t
 - **v1.3.1** — Bootstrap wrapper verifies `node_modules` on launch and installs missing MCP dependencies, so the tools keep working across plugin cache refreshes and no-terminal installs. The install is announced (never silent) and sends no vault data; set `CORTEX_SKIP_NPM_INSTALL=1` to opt out.
 - **v1.4.0** — Onboarding rewrite (adaptive tone register, 50+ compliance regimes, multi-axis schema, three build modes, accessibility); path-traversal guards on MCP tools; registry reconciliation with `register_repo` MCP tool; changelog write chokepoint. MCP tool count now 16.
 - **v1.4.1** — Cowork / hookless-surface reliability: MCP deps auto-install on launch (opt out `CORTEX_SKIP_NPM_INSTALL=1`); `recall_related` / `search_vault` self-heal a stale index (opt out `CORTEX_NO_AUTO_REINDEX=1`); `cortex-boot` hookless-surface maintenance contract; README/doc-drift corrections.
+- **v1.4.3** — Null-safe `SessionStart` formatter: budget-trimmed `memory` / `learner_profile` / `personality` fields no longer crash the boot hook when a large `personality.md` starves the char budget, so the `<cortex-session>` block is emitted instead of silently falling back to the `get_boot_context` MCP tool.
 
 ---
 
