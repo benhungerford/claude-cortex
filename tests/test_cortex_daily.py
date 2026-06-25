@@ -38,5 +38,37 @@ class TestSkillManifest(unittest.TestCase):
         self.assertIn("workflows/generate-routine.md", read("SKILL.md"))
 
 
+class TestSkeleton(unittest.TestCase):
+    def setUp(self):
+        self.text = read("assets/routine-skeleton.md")
+
+    def test_has_all_seven_locked_parts(self):
+        for n in range(0, 7):
+            self.assertIn(f"PART {n}", self.text, f"skeleton missing PART {n}")
+
+    def test_unattended_no_questions_rule(self):
+        low = self.text.lower()
+        self.assertIn("unattended", low)
+        self.assertIn("never pause", low)
+
+    def test_dedup_guard_matches_on_id_not_filename(self):
+        self.assertIn("MATCH ON THE ID", self.text)
+        self.assertIn("_pipeline_state.json", self.text)
+
+    def test_autonomy_rules_present(self):
+        low = self.text.lower()
+        self.assertIn("_inbox", low)
+        self.assertIn("never delete", low)
+        self.assertIn("never duplicate", low)
+
+    def test_has_section_injection_marker(self):
+        self.assertIn("<!-- INJECT: SECTION BODIES -->", self.text)
+
+    def test_writes_briefing_and_logs(self):
+        low = self.text.lower()
+        self.assertIn("daily briefings/", low)
+        self.assertIn("append_changelog", low)
+
+
 if __name__ == "__main__":
     unittest.main()
