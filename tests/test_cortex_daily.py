@@ -101,5 +101,30 @@ class TestCanonicalSections(unittest.TestCase):
             self.assertIn(t, self.text, f"missing connector type: {t}")
 
 
+class TestSectionLibrary(unittest.TestCase):
+    def setUp(self):
+        self.text = read("assets/section-library.md")
+
+    def test_recipe_per_connector_type(self):
+        for t in ["email", "project-management", "transcript", "calendar"]:
+            self.assertIn(t, self.text, f"no recipe references connector type: {t}")
+
+    def test_vault_internal_recipes_present(self):
+        for s in ["Action Items", "Active Project Status", "Inbox Residue"]:
+            self.assertIn(s, self.text)
+
+    def test_has_generic_custom_recipe(self):
+        self.assertRegex(self.text.lower(), r"custom section")
+
+    def test_youtube_recipe_marked_opt_in(self):
+        self.assertIn("YouTube", self.text)
+        self.assertRegex(self.text, r"YouTube[\s\S]{0,160}(opt-in|explicit)")
+
+    def test_connector_recipes_note_dedup_inheritance(self):
+        low = self.text.lower()
+        self.assertIn("dedup", low)
+        self.assertIn("part 2", low)
+
+
 if __name__ == "__main__":
     unittest.main()
