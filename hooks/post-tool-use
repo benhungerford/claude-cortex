@@ -35,6 +35,64 @@ escape_for_json() {
 
 INPUT=$(cat)
 
+# ── Session-cache namespace derivation (W3.6) ───────────────────────────────
+# KEEP IN SYNC with hooks/session-start and hooks/stop. See session-start for
+# the full rationale. Derives a deterministic per-session namespace from the
+# stdin session_id (→ $CLAUDE_SESSION_ID → cwd hash → "default").
+cortex_session_ns() {
+    local raw=""
+    raw="$(printf '%s' "${1:-}" | python3 -c "
+import json, sys
+try:
+    print(json.loads(sys.stdin.read()).get('session_id', '') or '', end='')
+except Exception:
+    pass
+" 2>/dev/null || true)"
+    if [[ -z "$raw" ]]; then
+        raw="${CLAUDE_SESSION_ID:-}"
+    fi
+    if [[ -z "$raw" ]]; then
+        local h=""
+        if command -v shasum &>/dev/null; then
+            h="$(printf '%s' "${PWD:-/}" | shasum 2>/dev/null | cut -c1-16)"
+        elif command -v sha1sum &>/dev/null; then
+            h="$(printf '%s' "${PWD:-/}" | sha1sum 2>/dev/null | cut -c1-16)"
+        fi
+        raw="cwd-${h:-unknown}"
+    fi
+    raw="$(printf '%s' "$raw" | tr -c 'A-Za-z0-9_-' '_' )"
+    raw="${raw:0:64}"
+    printf '%s' "${raw:-default}"
+}
+
+SESSION_NS="$(cortex_session_ns "$INPUT")"
+NS_DIR="$PLUGIN_DATA/session-cache/ns/$SESSION_NS"
+
+# ── write_mode (W3.2 / T18) ─────────────────────────────────────────────────
+# Capture write posture, read from config.json `write_mode`:
+#   silent        — auto-log captures with no friction (default; the original
+#                   value prop devs liked).
+#   confirm       — auto-log, but the end-of-turn summary asks the user to
+#                   confirm the batched captures landed where intended.
+#   explicit-only — only surface captures triggered by an explicit phrase; the
+#                   batched summary is advisory and reminds the user that
+#                   silent auto-capture is off.
+# The auto-changelog itself is always written (it is an audit record); the mode
+# only shapes the surfaced hints, never data integrity.
+WRITE_MODE="silent"
+if [[ -f "$CONFIG_FILE" ]]; then
+    WRITE_MODE="$(python3 -c "
+import json
+try:
+    with open('$CONFIG_FILE') as f:
+        m = json.load(f).get('write_mode', 'silent')
+    print(m if m in ('silent','confirm','explicit-only') else 'silent', end='')
+except Exception:
+    print('silent', end='')
+" 2>/dev/null || printf 'silent')"
+fi
+[[ -z "$WRITE_MODE" ]] && WRITE_MODE="silent"
+
 # ── Step 2: Extract tool_name and file path ──────────────────────────────────
 
 PARSED="$(python3 -c "
@@ -66,11 +124,17 @@ fi
 
 # ── Step 3: Resolve vault path ───────────────────────────────────────────────
 
-CACHE_FILE="$PLUGIN_DATA/session-cache/vault-path.txt"
+# W3.6: prefer this session's namespaced cache; fall back to the legacy
+# top-level mirror so a session whose session-start predates namespacing (or a
+# platform that doesn't pass session_id) still resolves the vault.
+CACHE_FILE="$NS_DIR/vault-path.txt"
+LEGACY_CACHE_FILE="$PLUGIN_DATA/session-cache/vault-path.txt"
 VAULT_PATH=""
 
-if [[ -f "$CACHE_FILE" ]]; then
+if [[ -f "$CACHE_FILE" && -s "$CACHE_FILE" ]]; then
     VAULT_PATH="$(cat "$CACHE_FILE")"
+elif [[ -f "$LEGACY_CACHE_FILE" && -s "$LEGACY_CACHE_FILE" ]]; then
+    VAULT_PATH="$(cat "$LEGACY_CACHE_FILE")"
 fi
 
 if [[ -z "$VAULT_PATH" && -f "$CONFIG_FILE" ]]; then
@@ -162,9 +226,11 @@ fi
 KB_SOURCE=""
 case "$REL_PATH" in
     "Knowledge Base/"*)
-        # Check if this write was initiated by cortex-coach
-        COACH_FLAG="$PLUGIN_DATA/session-cache/coach-active.flag"
-        if [[ -f "$COACH_FLAG" ]]; then
+        # Check if this write was initiated by cortex-coach (namespaced, with
+        # legacy fallback per W3.6).
+        COACH_FLAG="$NS_DIR/coach-active.flag"
+        LEGACY_COACH_FLAG="$PLUGIN_DATA/session-cache/coach-active.flag"
+        if [[ -f "$COACH_FLAG" || -f "$LEGACY_COACH_FLAG" ]]; then
             KB_SOURCE=" [source:coaching]"
         else
             KB_SOURCE=" [source:capture]"
@@ -220,7 +286,9 @@ if [[ "$FILENAME" == *.md ]]; then
         PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-${CURSOR_PLUGIN_ROOT:-}}"
         REINDEX_BIN="$PLUGIN_ROOT/mcp-servers/cortex-vault/bin/reindex-one.js"
         if [[ -n "$PLUGIN_ROOT" && -f "$REINDEX_BIN" ]] && command -v node &>/dev/null; then
-            REINDEX_DIR="$PLUGIN_DATA/session-cache/reindex"
+            # W3.6: per-session reindex queue/lock so concurrent sessions
+            # don't share one drain.lock (which would starve all but one).
+            REINDEX_DIR="$NS_DIR/reindex"
             mkdir -p "$REINDEX_DIR" 2>/dev/null || true
             QUEUE_FILE="$REINDEX_DIR/queue.txt"
             LOCK_DIR="$REINDEX_DIR/drain.lock"
@@ -255,12 +323,38 @@ if [[ "$FILENAME" == *.md ]]; then
     fi
 fi
 
-# ── Step 9: Build additionalContext hint ────────────────────────────────────
+# ── Step 9: Record write into the per-turn batch + emit ONE batched hint ─────
+# W3.2 (T18): the old behavior emitted a verbose per-write hint on EVERY vault
+# write, which defeats the documented "one batched confirmation per turn" rule.
+# Instead we append each write to a per-session capture log and emit a single,
+# compact running summary. The stop hook reads this log to produce the final
+# end-of-turn batched summary (with flushed memory content) and clears it.
 
-if [[ "$ACTION" == "CREATED" ]]; then
-    HINT="Auto-logged: $ACTION | $FILENAME | $REL_DIR. If this is a new file in a folder, update the folder's _MOC.md."
+CAPTURE_LOG="$NS_DIR/turn-captures.log"
+mkdir -p "$NS_DIR" 2>/dev/null || true
+# One tab-separated "ACTION<TAB>FILENAME<TAB>REL_DIR" line per write.
+printf '%s\t%s\t%s\n' "$ACTION" "$FILENAME" "$REL_DIR" >> "$CAPTURE_LOG" 2>/dev/null || true
+
+# Count writes accumulated this turn (best-effort).
+WRITE_COUNT="$(grep -c '' "$CAPTURE_LOG" 2>/dev/null | tr -dc '0-9' || true)"
+WRITE_COUNT="${WRITE_COUNT:-1}"
+
+# Compact, non-spammy hint. The MOC nag is only worth surfacing once, on the
+# first CREATE of the turn — repeating it per file is the noise the audit flagged.
+MODE_NOTE=""
+case "$WRITE_MODE" in
+    confirm)       MODE_NOTE=" [write_mode:confirm — confirm these captures at end of turn]" ;;
+    explicit-only) MODE_NOTE=" [write_mode:explicit-only — auto-capture advisory]" ;;
+esac
+
+if [[ "$WRITE_COUNT" -le 1 ]]; then
+    if [[ "$ACTION" == "CREATED" ]]; then
+        HINT="Captured: $ACTION $FILENAME ($REL_DIR). New file — consider updating the folder's _MOC.md. (1 vault write this turn)$MODE_NOTE"
+    else
+        HINT="Captured: $ACTION $FILENAME ($REL_DIR). (1 vault write this turn)$MODE_NOTE"
+    fi
 else
-    HINT="Auto-logged: $ACTION | $FILENAME | $REL_DIR."
+    HINT="Captured: $ACTION $FILENAME ($REL_DIR). ($WRITE_COUNT vault writes this turn — a batched summary will follow at end of turn.)$MODE_NOTE"
 fi
 
 CONTEXT="<cortex-changelog>$HINT</cortex-changelog>"

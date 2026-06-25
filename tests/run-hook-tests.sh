@@ -161,6 +161,28 @@ run_test "Granola transcript is medium confidence (no timestamps)" "user-prompt-
 # W2.9 — a bibliography/citation paste (Author:/Title:/DOI:) shares the "Key:"
 # shape but must NOT hard-route to meeting filing.
 run_test_empty "bibliography paste does NOT route to meeting" "user-prompt-submit" "user-prompt-submit-bibliography.json"
+# W3.5 — broadened status phrasing: "on track" routes to cortex-check-status.
+run_test "status phrasing 'on track' routes to check-status" "user-prompt-submit" "user-prompt-submit-on-track.json" "cortex-check-status"
+# W3.4 — "we got the <X>" routes to cortex-update-context at medium confidence
+# (documented blocker-resolved capture, previously unimplemented).
+run_test "'we got the X' routes to update-context" "user-prompt-submit" "user-prompt-submit-we-got.json" "cortex-update-context"
+run_test "'we got the X' is medium confidence" "user-prompt-submit" "user-prompt-submit-we-got.json" "confidence: medium"
+# W3.4 — curly apostrophe (U+2019) normalization: "that’s resolved" matches the
+# same straight-apostrophe pattern as "that's resolved".
+run_test "curly-apostrophe 'that’s resolved' routes to update-context" "user-prompt-submit" "user-prompt-submit-curly-resolved.json" "cortex-update-context"
+# W3.2 — bare "reusable" no longer over-fires the knowledge skill without an anchor.
+echo '{"session_id":"t","hook_event_name":"UserPromptSubmit","user_prompt":"I built a reusable component for the navbar"}' > "$CLAUDE_PLUGIN_DATA/ups-bare-reusable.json"
+run_test_empty "bare 'reusable' does NOT fire knowledge skill" "user-prompt-submit" "ups-bare-reusable.json"
+# W3.3 — teaching-moment phrase writes a pending-signals.json producer entry.
+echo '{"session_id":"sigtest-ns","hook_event_name":"UserPromptSubmit","user_prompt":"can you explain how the auth flow works?"}' > "$CLAUDE_PLUGIN_DATA/ups-teaching.json"
+cat "$CLAUDE_PLUGIN_DATA/ups-teaching.json" | bash "$REPO_ROOT/hooks/user-prompt-submit" >/dev/null 2>&1 || true
+if [[ -s "$CLAUDE_PLUGIN_DATA/session-cache/ns/sigtest-ns/pending-signals.json" ]]; then
+    echo "  PASS: teaching moment writes namespaced pending-signals.json (W3.3)"
+    PASS=$((PASS + 1))
+else
+    echo "  FAIL: teaching moment did not write pending-signals.json"
+    FAIL=$((FAIL + 1))
+fi
 
 echo
 echo "stop:"
@@ -170,6 +192,83 @@ echo '[{"section": "test", "content": "## Hook Test\\nTest flush."}]' > "$CLAUDE
 run_test "flushes pending" "stop" "stop-with-pending.json" "cortex-memory"
 
 run_test_empty "bails on active" "stop" "stop-empty.json"
+
+# W3.6 — namespaced session cache: post-tool-use and stop in the SAME session
+# (same session_id) share a per-session namespace dir under session-cache/ns/.
+# A different session_id must NOT see the first session's batch.
+echo
+echo "stop/post-tool-use namespacing + batched summary (W3.2/W3.6):"
+NS_SID="nstest-$$"
+NS_PATH="$CLAUDE_PLUGIN_DATA/session-cache/ns/$NS_SID"
+mkdir -p "$NS_PATH"
+echo "$TEST_VAULT" > "$NS_PATH/vault-path.txt"
+
+# Two vault writes in one turn (post-tool-use), tagged with the same session_id.
+for n in 1 2; do
+  echo "{\"session_id\":\"$NS_SID\",\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"$TEST_VAULT/NSNote$n.md\"}}" \
+    | bash "$REPO_ROOT/hooks/post-tool-use" >/dev/null 2>&1 || true
+done
+
+# The per-turn capture log must live under THIS session's namespace.
+if [[ -s "$NS_PATH/turn-captures.log" ]]; then
+    echo "  PASS: post-tool-use writes namespaced turn-captures.log"
+    PASS=$((PASS + 1))
+else
+    echo "  FAIL: namespaced turn-captures.log missing"
+    FAIL=$((FAIL + 1))
+fi
+
+# A concurrent session (different session_id) writes into its OWN namespace and
+# must not append to the first session's capture log.
+OTHER_SID="other-$$"
+OTHER_PATH="$CLAUDE_PLUGIN_DATA/session-cache/ns/$OTHER_SID"
+mkdir -p "$OTHER_PATH"
+echo "$TEST_VAULT" > "$OTHER_PATH/vault-path.txt"
+echo "{\"session_id\":\"$OTHER_SID\",\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"$TEST_VAULT/OtherNote.md\"}}" \
+    | bash "$REPO_ROOT/hooks/post-tool-use" >/dev/null 2>&1 || true
+# First session's log still has exactly 2 lines (untouched by the other session).
+ns1_lines="$(grep -c '' "$NS_PATH/turn-captures.log" 2>/dev/null | tr -dc '0-9' || true)"
+other_lines="$(grep -c '' "$OTHER_PATH/turn-captures.log" 2>/dev/null | tr -dc '0-9' || true)"
+if [[ "${ns1_lines:-0}" == "2" && "${other_lines:-0}" == "1" ]]; then
+    echo "  PASS: concurrent session writes its own namespace (no clobber)"
+    PASS=$((PASS + 1))
+else
+    echo "  FAIL: concurrent session clobbered (ns1=$ns1_lines other=$other_lines)"
+    FAIL=$((FAIL + 1))
+fi
+
+# Stop (same session) must emit ONE batched summary listing both writes, then
+# clear the capture log — even with no pending memory to flush.
+ns_stop_out=$(echo "{\"session_id\":\"$NS_SID\",\"stop_hook_active\":false}" \
+    | bash "$REPO_ROOT/hooks/stop" 2>/dev/null || echo "HOOK_ERROR")
+if echo "$ns_stop_out" | grep -q "2 vault write(s) this turn"; then
+    echo "  PASS: stop emits ONE batched summary of the turn's writes"
+    PASS=$((PASS + 1))
+else
+    echo "  FAIL: stop did not emit batched summary"
+    echo "    Got: $(echo "$ns_stop_out" | head -2)"
+    FAIL=$((FAIL + 1))
+fi
+if [[ ! -e "$NS_PATH/turn-captures.log" ]]; then
+    echo "  PASS: stop clears its own turn-captures.log"
+    PASS=$((PASS + 1))
+else
+    echo "  FAIL: stop did not clear the capture log"
+    FAIL=$((FAIL + 1))
+fi
+
+# W3.2 — flushed memory CONTENT (not just a count) appears in the stop summary.
+python3 -c "import json; json.dump([{'section':'Facts','content':'NSFlushFact alpha'}], open('$NS_PATH/pending-memory.json','w'))"
+ns_flush_out=$(echo "{\"session_id\":\"$NS_SID\",\"stop_hook_active\":false}" \
+    | bash "$REPO_ROOT/hooks/stop" 2>/dev/null || echo "HOOK_ERROR")
+if echo "$ns_flush_out" | grep -q "NSFlushFact alpha"; then
+    echo "  PASS: stop summary includes flushed memory content"
+    PASS=$((PASS + 1))
+else
+    echo "  FAIL: stop summary omitted flushed content"
+    echo "    Got: $(echo "$ns_flush_out" | head -2)"
+    FAIL=$((FAIL + 1))
+fi
 
 echo
 echo "boot-context.py:"
@@ -265,6 +364,12 @@ run_boot_test "L3 — cwd matches registered repo" "--cwd $TEST_REPO" \
 run_boot_test "L3 — hub data populated" "--cwd $TEST_REPO" \
     "data['project']['stage'] == 'Core Build' and len(data['project']['blockers']) == 1 and 'API keys' in data['project']['blockers'][0] and len(data['project']['open_questions']) == 1 and len(data['project']['recent_decisions']) == 5"
 
+# W3.5 — L2 boot surfaces registered project NAMES (not just bucket names) in
+# the active_projects anchor. With the registry above, an L2 session (cwd inside
+# vault) should list both buckets and the "Test Project" project name.
+run_boot_test "L2 active_projects includes project NAMES (W3.5)" "--cwd $TEST_VAULT" \
+    "data['activation_level'] == 2 and data['active_projects'] is not None and 'Test Project' in data['active_projects'] and 'Projects:' in data['active_projects']"
+
 # Test 4: Memory cap
 python3 -c "
 for i in range(200):
@@ -285,6 +390,15 @@ for i in range(120):
 
 run_boot_test "dormant feature detection" "" \
     "data['feature_suggestion'] is not None and 'weekly_review' in data['feature_suggestion']"
+
+# W3.3 — dormant suppression: the previous boot test just suggested
+# weekly_review and wrote its last_suggested date, so a second boot the same
+# day must NOT re-suggest the same (and only) dormant feature.
+run_boot_test "dormant suppression (no re-suggest same day)" "" \
+    "data['feature_suggestion'] is None"
+
+# Clear the suppression state so later tests aren't affected.
+rm -f "$TEST_VAULT/.claude/cortex/dormant-suggested.json"
 
 # Restore normal changelog
 echo "" > "$TEST_VAULT/_changelog.txt"

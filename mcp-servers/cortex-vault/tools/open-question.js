@@ -3,10 +3,11 @@
 const path = require('node:path');
 const fs = require('node:fs');
 const { getVaultPath, resolveInsideVault, VaultPathError } = require('../lib/vault-path.js');
-const { readFile, writeFile, appendFile } = require('../lib/file-ops.js');
+const { readFile, appendFile } = require('../lib/file-ops.js');
 const { extractFrontmatter, stringifyYaml } = require('../lib/yaml.js');
 const { formatChangelogEntry } = require('../lib/changelog-format.js');
 const { addRow, resolveRow } = require('../lib/hub-schema.js');
+const { updateFileAtomic, ConcurrencyError } = require('../lib/file-ops.js');
 
 function todayDateStr() {
   const now = new Date();
@@ -102,45 +103,52 @@ async function handler(args, vaultOverride) {
     };
   }
 
-  const { frontmatter, body } = extractFrontmatter(fileContent);
-
-  let newBody;
+  // Hub read-modify-write is guarded by updateFileAtomic (advisory lock + CAS)
+  // so two concurrent add/resolve calls on the same hub can't lose a write
+  // (W3.7). Validation results surface via the closure vars below.
   let removedText = null;
+  let opError = null;
 
-  if (action === 'add') {
-    newBody = addRow(body, { question: text, type: type || 'Question', owner: owner || '' });
-  } else {
-    // resolve — remove the row entirely
-    const res = resolveRow(body, text);
-    if (res.notFound) {
+  const transform = (content) => {
+    const { frontmatter, body } = extractFrontmatter(content);
+    let newBody;
+    if (action === 'add') {
+      newBody = addRow(body, { question: text, type: type || 'Question', owner: owner || '' });
+    } else {
+      // resolve — remove the row entirely
+      const res = resolveRow(body, text);
+      if (res.notFound) {
+        opError = `No matching open question or blocker found for: "${text}"`;
+        return null; // abort the write
+      }
+      if (res.error === 'ambiguous') {
+        opError = `"${text}" matches multiple rows; be more specific. Candidates:\n` +
+          res.candidates.map((c) => `  - ${c}`).join('\n');
+        return null; // abort the write
+      }
+      newBody = res.content;
+      removedText = res.removed;
+    }
+    const updatedFrontmatter = { ...frontmatter, updated: todayDateStr() };
+    const yamlStr = stringifyYaml(updatedFrontmatter).trimEnd();
+    return `---\n${yamlStr}\n---\n${newBody}`;
+  };
+
+  try {
+    updateFileAtomic(filePath, transform, { retries: 3 });
+  } catch (err) {
+    if (err instanceof ConcurrencyError) {
       return {
-        content: [{ type: 'text', text: `No matching open question or blocker found for: "${text}"` }],
+        content: [{ type: 'text', text: `Hub was modified concurrently; please retry. (${err.message})` }],
         isError: true
       };
     }
-    if (res.error === 'ambiguous') {
-      return {
-        content: [{
-          type: 'text',
-          text: `"${text}" matches multiple rows; be more specific. Candidates:\n` +
-            res.candidates.map((c) => `  - ${c}`).join('\n')
-        }],
-        isError: true
-      };
-    }
-    newBody = res.content;
-    removedText = res.removed;
+    throw err;
   }
 
-  // Bump updated in frontmatter
-  const today = todayDateStr();
-  const updatedFrontmatter = { ...frontmatter, updated: today };
-
-  // Rebuild with both new frontmatter AND new body
-  const yamlStr = stringifyYaml(updatedFrontmatter).trimEnd();
-  const finalContent = `---\n${yamlStr}\n---\n${newBody}`;
-
-  writeFile(filePath, finalContent);
+  if (opError) {
+    return { content: [{ type: 'text', text: opError }], isError: true };
+  }
 
   // Append changelog entry via shared formatter.
   const noteText = action === 'add'

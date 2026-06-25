@@ -191,6 +191,87 @@ class TestNearbyWarning(unittest.TestCase):
         self.assertIsNone(warn)
 
 
+class TestDormantFeatures(unittest.TestCase):
+    """W3.3 (T21): generalized dormant-feature iteration + 7-day suppression."""
+
+    DOC_PERS = (
+        "---\n"
+        "progressive_features:\n"
+        "  active:\n"
+        "    - feature: \"memory_management\"\n"
+        "  dormant:\n"
+        "    - feature: \"meeting_threading\"\n"
+        "      cooldown_days: 30\n"
+        "    - feature: \"weekly_review\"\n"
+        "      cooldown_days: 14\n"
+        "---\n"
+        "# P\n"
+    )
+
+    COMPACT_PERS = (
+        "---\n"
+        "progressive_features:\n"
+        "  active:\n"
+        "    - core_capture\n"
+        "  dormant:\n"
+        "    - name: weekly_review\n"
+        "      activation_signal: \"changelog_lines >= 50\"\n"
+        "    - name: daily_briefing\n"
+        "---\n"
+        "# P\n"
+    )
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="cortex-dormant-")
+        os.makedirs(os.path.join(self.tmp, ".claude", "cortex"))
+
+    def test_parses_both_yaml_shapes(self):
+        self.assertEqual(
+            bc._parse_dormant_features(self.DOC_PERS),
+            ["meeting_threading", "weekly_review"],
+        )
+        self.assertEqual(
+            bc._parse_dormant_features(self.COMPACT_PERS),
+            ["weekly_review", "daily_briefing"],
+        )
+
+    def test_below_threshold_returns_none(self):
+        self.assertIsNone(
+            bc.check_dormant_features(self.DOC_PERS, 10, vault_path=self.tmp,
+                                      today="2026-06-01")
+        )
+
+    def test_iterates_all_features_not_just_weekly_review(self):
+        # First eligible feature (declared order) is meeting_threading, NOT the
+        # old hardcoded weekly_review.
+        s = bc.check_dormant_features(self.DOC_PERS, 60, vault_path=self.tmp,
+                                      today="2026-06-01")
+        self.assertIn("meeting_threading", s)
+
+    def test_suppresses_then_advances_then_reeligible(self):
+        s1 = bc.check_dormant_features(self.DOC_PERS, 60, vault_path=self.tmp,
+                                       today="2026-06-01")
+        self.assertIn("meeting_threading", s1)
+        # Same day: meeting_threading is suppressed; advances to weekly_review.
+        s2 = bc.check_dormant_features(self.DOC_PERS, 60, vault_path=self.tmp,
+                                       today="2026-06-01")
+        self.assertIn("weekly_review", s2)
+        # Same day: both suppressed -> None.
+        s3 = bc.check_dormant_features(self.DOC_PERS, 60, vault_path=self.tmp,
+                                       today="2026-06-01")
+        self.assertIsNone(s3)
+        # 8 days later: first feature past the 7-day window is eligible again.
+        s4 = bc.check_dormant_features(self.DOC_PERS, 60, vault_path=self.tmp,
+                                       today="2026-06-09")
+        self.assertIn("meeting_threading", s4)
+
+    def test_state_persisted_per_feature(self):
+        bc.check_dormant_features(self.DOC_PERS, 60, vault_path=self.tmp,
+                                  today="2026-06-01")
+        state = bc._read_dormant_state(self.tmp)
+        self.assertEqual(state.get("meeting_threading"), "2026-06-01")
+
+
 class TestConfigDefaultProject(unittest.TestCase):
     def test_read_default_project_from_config(self):
         import json

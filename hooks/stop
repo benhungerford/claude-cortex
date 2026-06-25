@@ -44,20 +44,74 @@ if [[ "$STOP_ACTIVE" == "True" ]]; then
     exit 0
 fi
 
+# ── Session-cache namespace derivation (W3.6) ───────────────────────────────
+# KEEP IN SYNC with hooks/session-start and hooks/post-tool-use. Each stop hook
+# reads and deletes only its OWN session's namespace. See session-start for the
+# full rationale.
+cortex_session_ns() {
+    local raw=""
+    raw="$(printf '%s' "${1:-}" | python3 -c "
+import json, sys
+try:
+    print(json.loads(sys.stdin.read()).get('session_id', '') or '', end='')
+except Exception:
+    pass
+" 2>/dev/null || true)"
+    if [[ -z "$raw" ]]; then
+        raw="${CLAUDE_SESSION_ID:-}"
+    fi
+    if [[ -z "$raw" ]]; then
+        local h=""
+        if command -v shasum &>/dev/null; then
+            h="$(printf '%s' "${PWD:-/}" | shasum 2>/dev/null | cut -c1-16)"
+        elif command -v sha1sum &>/dev/null; then
+            h="$(printf '%s' "${PWD:-/}" | sha1sum 2>/dev/null | cut -c1-16)"
+        fi
+        raw="cwd-${h:-unknown}"
+    fi
+    raw="$(printf '%s' "$raw" | tr -c 'A-Za-z0-9_-' '_' )"
+    raw="${raw:0:64}"
+    printf '%s' "${raw:-default}"
+}
+
+SESSION_NS="$(cortex_session_ns "$INPUT")"
+NS_DIR="$PLUGIN_DATA/session-cache/ns/$SESSION_NS"
+
+# Resolve this session's vault path once (namespaced → legacy fallback). Used by
+# the signal flush, the batched capture summary, and the memory flush below.
+resolve_vault_path() {
+    local v=""
+    if [[ -f "$NS_DIR/vault-path.txt" && -s "$NS_DIR/vault-path.txt" ]]; then
+        v="$(cat "$NS_DIR/vault-path.txt")"
+    elif [[ -f "$PLUGIN_DATA/session-cache/vault-path.txt" && -s "$PLUGIN_DATA/session-cache/vault-path.txt" ]]; then
+        v="$(cat "$PLUGIN_DATA/session-cache/vault-path.txt")"
+    fi
+    if [[ -z "$v" && -f "$CONFIG_FILE" ]]; then
+        v="$(python3 -c "
+import json
+try:
+    with open('$CONFIG_FILE') as f:
+        print(json.load(f).get('vault_path', ''))
+except Exception:
+    pass
+" 2>/dev/null || true)"
+    fi
+    printf '%s' "$v"
+}
+
 # ── Step 1b: Log learning signals to _signals.log ───────────────────────────
 # Check for teaching-moment signals accumulated during the session.
 # The cortex-coach skill and hooks write pending signals to a JSON file.
 
-SIGNALS_PENDING="$PLUGIN_DATA/session-cache/pending-signals.json"
+# W3.6: prefer the namespaced pending-signals file; fall back to the legacy
+# top-level location for sessions that predate namespacing.
+SIGNALS_PENDING="$NS_DIR/pending-signals.json"
+if [[ ! -f "$SIGNALS_PENDING" || ! -s "$SIGNALS_PENDING" ]]; then
+    SIGNALS_PENDING="$PLUGIN_DATA/session-cache/pending-signals.json"
+fi
 
 if [[ -f "$SIGNALS_PENDING" && -s "$SIGNALS_PENDING" ]]; then
-    # Resolve vault path
-    SIGNAL_CACHE_FILE="$PLUGIN_DATA/session-cache/vault-path.txt"
-    SIGNAL_VAULT_PATH=""
-
-    if [[ -f "$SIGNAL_CACHE_FILE" ]]; then
-        SIGNAL_VAULT_PATH="$(cat "$SIGNAL_CACHE_FILE")"
-    fi
+    SIGNAL_VAULT_PATH="$(resolve_vault_path)"
 
     if [[ -n "$SIGNAL_VAULT_PATH" && -d "$SIGNAL_VAULT_PATH" ]]; then
         SIGNALS_LOG="$SIGNAL_VAULT_PATH/Knowledge Base/Growth/_signals.log"
@@ -96,38 +150,76 @@ with open(signals_log, 'a') as f:
     rm -f "$SIGNALS_PENDING"
 fi
 
-# ── Step 2: Check for pending memory updates ────────────────────────────────
+# ── Step 1c: Build the batched per-turn capture summary (W3.2 / T18) ─────────
+# post-tool-use no longer emits a verbose hint per write — it appends each
+# vault write to a per-session turn-captures.log. Here we collapse that log
+# into ONE end-of-turn summary, then clear it. This is emitted even when there
+# is no pending memory to flush, so the user always gets a single consolidated
+# confirmation of what was captured this turn.
 
-PENDING_FILE="$PLUGIN_DATA/session-cache/pending-memory.json"
+CAPTURE_SUMMARY=""
+CAPTURE_LOG="$NS_DIR/turn-captures.log"
+if [[ -f "$CAPTURE_LOG" && -s "$CAPTURE_LOG" ]]; then
+    CAPTURE_SUMMARY="$(python3 -c "
+import sys
+lines = [l.rstrip('\n') for l in open(sys.argv[1]) if l.strip()]
+items = []
+for l in lines:
+    parts = l.split('\t')
+    action = parts[0] if len(parts) > 0 else ''
+    fname = parts[1] if len(parts) > 1 else ''
+    reldir = parts[2] if len(parts) > 2 else ''
+    if not fname:
+        continue
+    items.append(f'{action} {fname} ({reldir})'.strip())
+n = len(items)
+if n:
+    head = f'{n} vault write(s) this turn: '
+    print(head + '; '.join(items))
+" "$CAPTURE_LOG" 2>/dev/null || true)"
+    rm -f "$CAPTURE_LOG"
+fi
+
+# ── Step 2: Check for pending memory updates ────────────────────────────────
+# W3.6: prefer the namespaced pending-memory file; fall back to legacy.
+
+PENDING_FILE="$NS_DIR/pending-memory.json"
+if [[ ! -f "$PENDING_FILE" || ! -s "$PENDING_FILE" ]]; then
+    PENDING_FILE="$PLUGIN_DATA/session-cache/pending-memory.json"
+fi
+
+# Helper to emit (and exit) with whatever context we have. Even if there's no
+# memory to flush, a batched capture summary is still worth surfacing.
+emit_and_exit() {
+    local body="$1"
+    if [[ -z "$body" ]]; then
+        printf '{}\n'
+        exit 0
+    fi
+    local ctx esc
+    ctx="<cortex-memory>$body</cortex-memory>"
+    esc="$(escape_for_json "$ctx")"
+    if [[ -n "${CURSOR_PLUGIN_ROOT:-}" ]]; then
+        printf '{"additional_context":"%s"}\n' "$esc"
+    elif [[ -n "${CLAUDE_PLUGIN_ROOT:-}" && -z "${COPILOT_CLI:-}" ]]; then
+        printf '{"hookSpecificOutput":{"hookEventName":"Stop","additionalContext":"%s"}}\n' "$esc"
+    else
+        printf '{"additionalContext":"%s"}\n' "$esc"
+    fi
+    exit 0
+}
 
 if [[ ! -f "$PENDING_FILE" ]] || [[ ! -s "$PENDING_FILE" ]]; then
-    printf '{}\n'
-    exit 0
+    # No memory to flush — still emit the batched capture summary if present.
+    emit_and_exit "$CAPTURE_SUMMARY"
 fi
 
 # ── Step 3: Resolve vault path ──────────────────────────────────────────────
 
-CACHE_FILE="$PLUGIN_DATA/session-cache/vault-path.txt"
-VAULT_PATH=""
-
-if [[ -f "$CACHE_FILE" ]]; then
-    VAULT_PATH="$(cat "$CACHE_FILE")"
-fi
-
-if [[ -z "$VAULT_PATH" && -f "$CONFIG_FILE" ]]; then
-    VAULT_PATH="$(python3 -c "
-import json
-try:
-    with open('$CONFIG_FILE') as f:
-        print(json.load(f).get('vault_path', ''))
-except Exception:
-    pass
-" 2>/dev/null)" || true
-fi
+VAULT_PATH="$(resolve_vault_path)"
 
 if [[ -z "$VAULT_PATH" || ! -d "$VAULT_PATH" ]]; then
-    printf '{}\n'
-    exit 0
+    emit_and_exit "$CAPTURE_SUMMARY"
 fi
 
 # ── Step 4: Read and apply pending updates ──────────────────────────────────
@@ -172,6 +264,7 @@ if not existing:
 lines = existing.split('\n')
 seen = {norm(l) for l in lines}
 written = 0
+flushed_lines = []
 
 for entry in updates:
     if not isinstance(entry, dict):
@@ -183,6 +276,7 @@ for entry in updates:
     # Dedup against everything already present, including facts added this flush.
     block_lines = [l for l in content.split('\n') if l.strip()]
     new_block = [l for l in block_lines if norm(l) not in seen]
+    flushed_lines.extend(new_block)
     if not new_block:
         continue
     if section:
@@ -207,7 +301,7 @@ for entry in updates:
     written += 1
 
 if written == 0:
-    print('0|0')
+    print('0|0|')
     sys.exit()
 
 out = '\n'.join(lines)
@@ -221,17 +315,28 @@ with open(tmp, 'w') as f:
 os.replace(tmp, memory_file)
 
 line_count = len([l for l in out.split('\n') if l])
-print(f'{written}|{line_count}')
-" "$PENDING_FILE" "$MEMORY_FILE" "$SOFT_LINE_CAP" 2>/dev/null)" || FLUSH_RESULT="0|0"
+# W3.2: emit the flushed content itself (base64, newline-safe) as a third field
+# so the stop-hook summary can show WHAT was written, not just a count.
+import base64
+flushed_b64 = base64.b64encode('\n'.join(flushed_lines).encode('utf-8')).decode('ascii')
+print(f'{written}|{line_count}|{flushed_b64}')
+" "$PENDING_FILE" "$MEMORY_FILE" "$SOFT_LINE_CAP" 2>/dev/null)" || FLUSH_RESULT="0|0|"
 
-# Split "written|linecount".
-FLUSH_COUNT="${FLUSH_RESULT%%|*}"
-MEMORY_LINES="${FLUSH_RESULT##*|}"
+# Split "written|linecount|flushed_b64".
+FLUSH_COUNT="$(printf '%s' "$FLUSH_RESULT" | cut -d'|' -f1)"
+MEMORY_LINES="$(printf '%s' "$FLUSH_RESULT" | cut -d'|' -f2)"
+FLUSHED_B64="$(printf '%s' "$FLUSH_RESULT" | cut -d'|' -f3)"
 FLUSH_RESULT="$FLUSH_COUNT"
 
-if [[ "$FLUSH_RESULT" == "0" ]]; then
-    printf '{}\n'
-    exit 0
+# Decode the flushed content for the summary (best-effort).
+FLUSHED_CONTENT=""
+if [[ -n "$FLUSHED_B64" ]]; then
+    FLUSHED_CONTENT="$(printf '%s' "$FLUSHED_B64" | python3 -c "import sys,base64; sys.stdout.write(base64.b64decode(sys.stdin.read()).decode('utf-8','replace'))" 2>/dev/null || true)"
+fi
+
+if [[ "$FLUSH_RESULT" == "0" || -z "$FLUSH_RESULT" ]]; then
+    # No memory flushed — still surface the batched capture summary if present.
+    emit_and_exit "$CAPTURE_SUMMARY"
 fi
 
 # ── Step 5: Log to _changelog.txt ───────────────────────────────────────────
@@ -249,13 +354,23 @@ rm -f "$PENDING_FILE"
 # Only remove pending-memory.json — leave other cache files intact
 
 # ── Step 7: Output confirmation ─────────────────────────────────────────────
+# W3.2: one consolidated end-of-turn summary — batched captures (from
+# post-tool-use), the memory flush count, AND the flushed content itself.
 
 EVICTION_NOTE=""
 if [[ -n "${MEMORY_LINES:-}" && "$MEMORY_LINES" -gt "$SOFT_LINE_CAP" ]]; then
     EVICTION_NOTE=" memory.md now has $MEMORY_LINES lines (soft cap $SOFT_LINE_CAP); run /cortex-compact-memory to evict stale facts."
 fi
 
-CONTEXT="<cortex-memory>Flushed $FLUSH_RESULT pending memory update(s) to vault memory.md.$EVICTION_NOTE</cortex-memory>"
+SUMMARY="Flushed $FLUSH_RESULT pending memory update(s) to vault memory.md.$EVICTION_NOTE"
+if [[ -n "$FLUSHED_CONTENT" ]]; then
+    SUMMARY="$SUMMARY"$'\n'"Written: $FLUSHED_CONTENT"
+fi
+if [[ -n "$CAPTURE_SUMMARY" ]]; then
+    SUMMARY="$SUMMARY"$'\n'"$CAPTURE_SUMMARY"
+fi
+
+CONTEXT="<cortex-memory>$SUMMARY</cortex-memory>"
 ESCAPED="$(escape_for_json "$CONTEXT")"
 
 if [[ -n "${CURSOR_PLUGIN_ROOT:-}" ]]; then

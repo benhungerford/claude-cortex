@@ -36,7 +36,16 @@ USER_PROMPT="$(printf '%s' "$INPUT" | python3 -c "
 import json, sys
 try:
     data = json.loads(sys.stdin.read())
-    print(data.get('user_prompt', ''))
+    text = data.get('user_prompt', '') or ''
+    # W3.4: normalize typographic punctuation to ASCII so curly-apostrophe
+    # pastes (e.g. 'that’s resolved' from macOS smart quotes, iOS, Word)
+    # match the same hardcoded straight-apostrophe patterns as 'that\'s'.
+    text = (text
+            .replace('’', \"'\")   # right single quote
+            .replace('‘', \"'\")   # left single quote
+            .replace('“', '\"')    # left double quote
+            .replace('”', '\"'))   # right double quote
+    print(text)
 except Exception:
     pass
 " 2>/dev/null)" || true
@@ -165,6 +174,15 @@ if [[ -z "$SKILL" ]]; then
             CONFIDENCE="high"
             TRIGGER_DESC="resolved trigger"
             ;;
+        # W3.4 (T04): "we got <X>" / "we got the <X>" is documented (row 9) as a
+        # blocker-resolved capture but was never implemented. It's softer than
+        # an explicit "resolved" — route at medium so the skill confirms which
+        # blocker cleared rather than hard-filing.
+        *"we got the "*|*"we got "*)
+            SKILL="cortex-update-context"
+            CONFIDENCE="medium"
+            TRIGGER_DESC="possible blocker-resolved (\"we got …\") — confirm which blocker cleared"
+            ;;
     esac
 fi
 
@@ -180,9 +198,15 @@ if [[ -z "$SKILL" ]]; then
 fi
 
 # ── 3e: Knowledge triggers ─────────────────────────────────────────────────
+# W3.2/W3.4 (T18/T04): "file as a reference" is a documented trigger (row 15)
+# that was missing. Bare "reusable" over-fires on words like "reusable
+# component" mid-discussion, so it now requires a phrase anchor ("this is
+# reusable", "reusable pattern", "reusable knowledge") rather than the bare
+# substring.
 if [[ -z "$SKILL" ]]; then
     case "$LOWER" in
-        *"worth remembering"*|*"reusable"*|*"add to knowledge base"*|*"save this pattern"*|*"for future projects"*)
+        *"worth remembering"*|*"add to knowledge base"*|*"file as a reference"*|*"save this pattern"*|*"for future projects"* \
+        |*"this is reusable"*|*"that's reusable"*|*"reusable pattern"*|*"reusable knowledge"*)
             SKILL="cortex-knowledge"
             CONFIDENCE="medium"
             TRIGGER_DESC="knowledge trigger"
@@ -202,9 +226,13 @@ if [[ -z "$SKILL" ]]; then
 fi
 
 # ── 3f: Read-side triggers (lowest priority) ───────────────────────────────
+# W3.5 (T19): broadened status phrasings — "on track", "catch me up",
+# "what happened", plus common ESL / non-native variants ("what is the status",
+# "where we at", "give me an update", "bring me up to speed", "what is left").
 if [[ -z "$SKILL" ]]; then
     case "$LOWER" in
-        *"status of"*|*"what's the status"*|*"where are we on"*|*"what's left on"*|*"what's blocking"*|*"any open questions"*)
+        *"status of"*|*"what's the status"*|*"what is the status"*|*"where are we on"*|*"where we at"*|*"what's left on"*|*"what is left on"*|*"what's blocking"*|*"what is blocking"*|*"any open questions"* \
+        |*"on track"*|*"catch me up"*|*"what happened"*|*"give me an update"*|*"bring me up to speed"*|*"update me on"*)
             SKILL="cortex-check-status"
             CONFIDENCE="high"
             TRIGGER_DESC="status query"
@@ -225,15 +253,85 @@ fi
 
 # ── Step 3b: Teaching moment detection (for Stop hook signal logging) ───────
 # This does NOT route to a skill. It tags the exchange so the Stop hook
-# can log learning signals.
+# can log learning signals, AND (W3.3) appends a real pending-signals.json
+# entry so cortex-coach has an actual signal producer instead of a stub.
+#
+# W3.2: the bare "explain" substring over-fired (matches "self-explanatory",
+# "explainer video", etc.). It now needs a phrase anchor — "explain this/that/
+# how/why/the" — so only genuine instruction requests count.
 
 TEACHING_HINT=""
+TEACHING_TOPIC=""
 if [[ -z "$SKILL" ]]; then
     case "$LOWER" in
-        *"explain"*|*"why does"*|*"how does"*|*"walk me through"*|*"help me understand"*|*"what's the difference between"*|*"show me how"*)
+        *"explain this"*|*"explain that"*|*"explain how"*|*"explain why"*|*"explain the "*|*"can you explain"*|*"why does"*|*"how does"*|*"walk me through"*|*"help me understand"*|*"what's the difference between"*|*"show me how"*)
             TEACHING_HINT="<cortex-hint type=\"teaching-moment\">Teaching moment detected — stop hook should log if Claude provides significant instruction.</cortex-hint>"
+            TEACHING_TOPIC="user requested an explanation"
             ;;
     esac
+fi
+
+# W3.3: append a pending teaching-moment signal so the Stop hook's signal flush
+# (and cortex-coach) have a real producer. Best-effort and namespaced per
+# session so concurrent sessions don't share the pending file.
+if [[ -n "$TEACHING_TOPIC" ]] && command -v python3 &>/dev/null; then
+    PLUGIN_DATA="${CLAUDE_PLUGIN_DATA:-$HOME/.claude/cortex/plugin-data}"
+    # Derive the same per-session namespace the lifecycle hooks use (W3.6).
+    UPS_NS="$(printf '%s' "$INPUT" | python3 -c "
+import json, sys
+try:
+    print(json.loads(sys.stdin.read()).get('session_id', '') or '', end='')
+except Exception:
+    pass
+" 2>/dev/null || true)"
+    if [[ -z "$UPS_NS" ]]; then
+        UPS_NS="${CLAUDE_SESSION_ID:-}"
+    fi
+    if [[ -z "$UPS_NS" ]]; then
+        if command -v shasum &>/dev/null; then
+            UPS_NS="cwd-$(printf '%s' "${PWD:-/}" | shasum 2>/dev/null | cut -c1-16)"
+        elif command -v sha1sum &>/dev/null; then
+            UPS_NS="cwd-$(printf '%s' "${PWD:-/}" | sha1sum 2>/dev/null | cut -c1-16)"
+        fi
+    fi
+    UPS_NS="$(printf '%s' "${UPS_NS:-default}" | tr -c 'A-Za-z0-9_-' '_')"
+    UPS_NS="${UPS_NS:0:64}"
+    UPS_NS_DIR="$PLUGIN_DATA/session-cache/ns/$UPS_NS"
+    mkdir -p "$UPS_NS_DIR" 2>/dev/null || true
+    PENDING_SIGNALS="$UPS_NS_DIR/pending-signals.json"
+    printf '%s' "$USER_PROMPT" | python3 -c "
+import json, sys, os
+from datetime import datetime
+pending = sys.argv[1]
+prompt = sys.stdin.read()
+topic = (prompt.strip().split(chr(10))[0][:80] or 'unknown')
+sig = {
+    'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M'),
+    'type': 'TEACHING',
+    'domain': 'unknown',
+    'topic': topic,
+    'depth': 'minor',
+    'mode': 'session',
+}
+try:
+    if os.path.exists(pending):
+        with open(pending) as f:
+            data = json.load(f)
+        if not isinstance(data, list):
+            data = []
+    else:
+        data = []
+except Exception:
+    data = []
+data.append(sig)
+try:
+    tmp = pending + '.tmp'
+    with open(tmp, 'w') as f:
+        json.dump(data, f)
+    os.replace(tmp, pending)
+except Exception:
+    pass
+" "$PENDING_SIGNALS" 2>/dev/null || true
 fi
 
 # ── Step 4: Output ──────────────────────────────────────────────────────────

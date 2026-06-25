@@ -1,0 +1,5 @@
+{
+  "session_id": "test-session-001",
+  "hook_event_name": "UserPromptSubmit",
+  "user_prompt": "Great, that’s resolved now."
+}
