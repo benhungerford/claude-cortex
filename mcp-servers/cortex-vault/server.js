@@ -25,6 +25,7 @@ registerTool(require('./tools/thread-meeting.js'));
 registerTool(require('./tools/check-dormant-features.js'));
 registerTool(require('./tools/list-projects.js'));
 registerTool(require('./tools/open-question.js'));
+registerTool(require('./tools/generate-base.js'));
 registerTool(require('./tools/search-vault.js'));
 registerTool(require('./tools/recall-related.js'));
 registerTool(require('./tools/reindex-vault.js'));
