@@ -34,7 +34,7 @@ registerTool(require('./tools/get-boot-context.js'));
 registerTool(require('./tools/update-memory.js'));
 
 const server = new Server(
-  { name: 'cortex-vault', version: '1.4.1' },
+  { name: 'cortex-vault', version: '1.5.0' },
   { capabilities: { tools: {} } }
 );
 
