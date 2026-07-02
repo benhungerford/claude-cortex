@@ -27,6 +27,13 @@ If an existing article covers this topic, update it rather than creating a new o
 
 **Step 3: Create or update the article**
 
+**URL fetching (defuddle).** When the knowledge source is a web page URL, fetch
+it with the Defuddle CLI — `defuddle parse <url> --md` — and use the clean
+markdown output as the article source. Exceptions: URLs ending in `.md` (already
+markdown — use WebFetch directly). If the `defuddle` command is not installed,
+fall back to WebFetch silently and, once per session at most, suggest
+`npm install -g defuddle` for cleaner clips.
+
 **If creating a new article:**
 
 1. Create the file in `Knowledge Base/` with a descriptive title
