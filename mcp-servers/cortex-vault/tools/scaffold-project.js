@@ -4,6 +4,7 @@ const path = require('node:path');
 const { getVaultPath, resolveInsideVault, VaultPathError } = require('../lib/vault-path.js');
 const { writeFile, appendFile, ensureDir, fileExists } = require('../lib/file-ops.js');
 const { emptyTable } = require('../lib/hub-schema.js');
+const { clientProjectsBase } = require('../lib/base-templates.js');
 
 // Reject names that would escape the vault when embedded in a path.
 function isUnsafePathSegment(s) {
@@ -105,7 +106,7 @@ async function handler(args, vaultOverride) {
     };
     const clientMocContent =
       yamlBlock(clientMocFm) +
-      `\n# ${client}\n\n## Projects\n\n## Notes\n`;
+      `\n# ${client}\n\n## Projects\n\n![[${client} — Projects.base]]\n\n## Notes\n`;
     writeFile(clientMocPath, clientMocContent);
     created.push(`${clientRelPath}/_MOC.md`);
     logEntry(vault, '_MOC.md', `${clientRelPath}/_MOC.md`, `Client MOC for ${client}`);
@@ -138,6 +139,12 @@ async function handler(args, vaultOverride) {
     writeFile(path.join(meetingsAbsPath, '_MOC.md'), meetingsMocContent);
     created.push(`${clientRelPath}/Meetings/_MOC.md`);
     logEntry(vault, '_MOC.md', `${clientRelPath}/Meetings/_MOC.md`, `Meetings MOC for ${client}`);
+
+    // Client-level Bases dashboard — live view of project hubs in this folder
+    const baseFile = `${client} — Projects.base`;
+    writeFile(path.join(clientAbsPath, baseFile), clientProjectsBase(clientRelPath));
+    created.push(`${clientRelPath}/${baseFile}`);
+    logEntry(vault, baseFile, `${clientRelPath}/${baseFile}`, `Bases dashboard for ${client}`);
   }
 
   // ------------------------------------------------------------------
