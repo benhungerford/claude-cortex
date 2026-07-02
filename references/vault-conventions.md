@@ -61,6 +61,14 @@ Footer format:
 
 Full reference: see `wikilink-guidelines.md` in the vault's `.claude/rules/` directory.
 
+**Obsidian syntax (callouts, embeds, block IDs)**
+
+All write paths follow `references/obsidian-syntax.md`: decisions get
+`^dec-YYYY-MM-DD-n` block IDs, meeting notes open with a `> [!summary]` callout,
+Knowledge Base quirks use `> [!warning]` / `> [!tip]`, and shared content is
+embedded (`![[Note#Section]]`) instead of copied. The hub
+`## Open Questions & Blockers` table is exempt — its pipe format is canonical.
+
 **Meeting Threading**
 
 Recurring meetings are linked chronologically with `*Previous:*` and `*Next:*` links. When adding a new meeting note to a recurring series, find the most recent prior instance and add bidirectional thread links.

@@ -64,6 +64,18 @@ One ask, one response, then proceed or drop. Never ambiently extract without con
 
 **Practical, not theoretical.** Knowledge Base articles are for stuff the user will actually apply later. Avoid conceptual explanations, philosophical framings, or "best practices" essays. Every article should answer a concrete question the user might re-ask in 6 months.
 
+**Obsidian syntax.** Follow `references/obsidian-syntax.md`. Vendor quirks are
+`> [!warning]` callouts; workarounds/recipes are `> [!tip]` callouts. Keep the
+Problem/Solution/Example (pattern), Quirk/Workaround/Context (vendor note), and
+step-by-step (guide) structures — callouts wrap the quirk and workaround bodies.
+
+**URL fetching (defuddle).** When the knowledge source is a web page URL, fetch
+it with the Defuddle CLI — `defuddle parse <url> --md` — and use the clean
+markdown output as the article source. Exceptions: URLs ending in `.md` (already
+markdown — use WebFetch directly). If the `defuddle` command is not installed,
+fall back to WebFetch silently and, once per session at most, suggest
+`npm install -g defuddle` for cleaner clips.
+
 ## Worked examples
 
 ### Example 1 — Explicit trigger, new article

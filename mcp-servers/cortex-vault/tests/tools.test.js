@@ -440,6 +440,30 @@ describe('scaffold_project', () => {
 
     assert.equal(result.isError, true, 'unsafe bucket_root must be rejected by path-safety guard');
   });
+
+  // W3.3 (T4): scaffold_project emits client Projects.base dashboard
+  test('new client gets Projects.base embedded in client MOC', async () => {
+    const result = await tool.handler({
+      client: 'Acme', project: 'Site Build', category: 'TBL'
+    }, tmpVault);
+
+    assert.equal(result.isError, undefined, 'should not be an error');
+
+    const basePath = path.join(tmpVault, 'Work/TBL/Acme/Acme — Projects.base');
+    assert.ok(fs.existsSync(basePath), 'base file created');
+    assert.match(fs.readFileSync(basePath, 'utf8'), /file\.inFolder\("Work\/TBL\/Acme"\)/);
+
+    const moc = fs.readFileSync(path.join(tmpVault, 'Work/TBL/Acme/_MOC.md'), 'utf8');
+    assert.match(moc, /!\[\[Acme — Projects\.base\]\]/);
+  });
+
+  test('second project under same client does not duplicate the base file', async () => {
+    await tool.handler({ client: 'Acme', project: 'One', category: 'TBL' }, tmpVault);
+    const before = fs.readFileSync(path.join(tmpVault, 'Work/TBL/Acme/Acme — Projects.base'), 'utf8');
+    await tool.handler({ client: 'Acme', project: 'Two', category: 'TBL' }, tmpVault);
+    const after = fs.readFileSync(path.join(tmpVault, 'Work/TBL/Acme/Acme — Projects.base'), 'utf8');
+    assert.equal(before, after);
+  });
 });
 
 // ---------------------------------------------------------------------------

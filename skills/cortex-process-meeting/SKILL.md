@@ -96,6 +96,14 @@ If the target project is unclear, ask **once**: "Which project does this meeting
 
 If the meeting clearly isn't project-scoped but client-level and the client is unclear, ask: "This looks like a client-level meeting — which client?"
 
+### Obsidian syntax
+
+**Obsidian syntax.** Follow `references/obsidian-syntax.md`. Meeting notes open
+with a `> [!summary]` callout (collapsed `> [!summary]-` if longer than 4 lines).
+Decisions extracted to the hub get block IDs per the decision rule; the hub may
+embed the meeting's decisions section (`![[<Meeting Note>#Decisions]]`) instead
+of copying text.
+
 ## Worked examples
 
 ### Example 1 — Granola transcript for a known project

@@ -86,6 +86,11 @@ Read `personality.md` from the vault root. Use the following values:
 
   3. **Create `<Name> — Project Context.md`** hub from `assets/blank-template.md`. Populate all sections with extracted information. Include YAML frontmatter with: `type: project-context`, `project`, `client`, `status`, `health`, `tags` (including `#type/project-context`), `created` (today's date), `updated` (today's date).
 
+     **Obsidian syntax.** Follow `references/obsidian-syntax.md` for all scaffolded
+     content beyond the fixed templates: briefs pasted into the hub Overview keep
+     their structure, key facts become properties, and any decision already present
+     in the brief gets a `^dec-YYYY-MM-DD-n` block ID in `## Key Decisions`.
+
   4. **Create initial sub-notes with YAML frontmatter:**
 
      Read the `sub_note_types` from `personality.md` for the relevant bucket. Create each sub-note with:

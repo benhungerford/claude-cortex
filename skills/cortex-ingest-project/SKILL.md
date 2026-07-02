@@ -66,6 +66,11 @@ Run `workflows/ingest-project.md`. The workflow covers:
 
 **Never overwrite an existing project.** If the user's target project name already exists in the target bucket, switch to update mode — read the existing hub, apply the new information as an update, and route to `cortex-update-context` for the writes. Announce: `Project already exists — updating instead of scaffolding.`
 
+**Obsidian syntax.** Follow `references/obsidian-syntax.md` for all scaffolded
+content beyond the fixed templates: briefs pasted into the hub Overview keep
+their structure, key facts become properties, and any decision already present
+in the brief gets a `^dec-YYYY-MM-DD-n` block ID in `## Key Decisions`.
+
 ## Worked examples
 
 ### Example 1 — Full brief pasted

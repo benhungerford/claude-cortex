@@ -104,6 +104,13 @@ Every file that is modified gets its `updated:` frontmatter field bumped to toda
 
 Only read the files you intend to modify. If you're logging a decision to the hub and changelog, you read the hub and changelog. You do NOT pre-emptively read the Tech Stack sub-note "just in case". Scope is important here — the skill should be fast.
 
+### Obsidian syntax
+
+**Obsidian syntax.** Follow `references/obsidian-syntax.md`. Decisions written to
+`## Key Decisions` get a `^dec-YYYY-MM-DD-n` block ID; the paired Changelog entry
+links to it as `[[<Project> — Project Context#^dec-YYYY-MM-DD-n]]`. The
+`## Open Questions & Blockers` table format never changes (hub-schema.md).
+
 ## Worked examples
 
 ### Example 1 — Simple decision
