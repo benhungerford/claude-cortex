@@ -194,6 +194,7 @@ For Claude Desktop, use `scripts/install-desktop.sh` to mirror the plugin into t
 - **v1.4.1** — Cowork / hookless-surface reliability: MCP deps auto-install on launch (opt out `CORTEX_SKIP_NPM_INSTALL=1`); `recall_related` / `search_vault` self-heal a stale index (opt out `CORTEX_NO_AUTO_REINDEX=1`); `cortex-boot` hookless-surface maintenance contract; README/doc-drift corrections.
 - **v1.4.2** — `cortex-daily` skill: generates a copy-paste Claude Routine prompt for the unattended daily pipeline (connector pull → dedup → file → stepped briefing). Connector-agnostic, customizable sections (YouTube opt-in), chat + saved copy with diff refresh, L1 confirm-before-write; wired into the dormant `daily_briefing` activation.
 - **v1.4.3** — Null-safe `SessionStart` formatter: budget-trimmed `memory` / `learner_profile` / `personality` fields no longer crash the boot hook when a large `personality.md` starves the char budget, so the `<cortex-session>` block is emitted instead of silently falling back to the `get_boot_context` MCP tool.
+- **v1.5.0** — Obsidian syntax rules in write paths (`references/obsidian-syntax.md`); Bases dashboards with `generate_base` tool (MCP tool count now 17) plus scaffold integration and `bin/generate-dashboards.js` backfill; defuddle web clipping integration.
 
 ---
 
