@@ -51,6 +51,12 @@ Structure the note with:
 - **Action Items** — checklist format
 - Footer with `*Related:*` links
 
+**Obsidian syntax.** Follow `references/obsidian-syntax.md`. Meeting notes open
+with a `> [!summary]` callout (collapsed `> [!summary]-` if longer than 4 lines).
+Decisions extracted to the hub get block IDs per the decision rule; the hub may
+embed the meeting's decisions section (`![[<Meeting Note>#Decisions]]`) instead
+of copying text.
+
 **Step 4: Thread with previous meetings**
 
 Check the project's `Notes/` folder (or `Meetings/` for non-project meetings) for previous instances of the same meeting series:

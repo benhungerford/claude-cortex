@@ -64,6 +64,11 @@ One ask, one response, then proceed or drop. Never ambiently extract without con
 
 **Practical, not theoretical.** Knowledge Base articles are for stuff the user will actually apply later. Avoid conceptual explanations, philosophical framings, or "best practices" essays. Every article should answer a concrete question the user might re-ask in 6 months.
 
+**Obsidian syntax.** Follow `references/obsidian-syntax.md`. Vendor quirks are
+`> [!warning]` callouts; workarounds/recipes are `> [!tip]` callouts. Keep the
+Problem/Solution/Example (pattern), Quirk/Workaround/Context (vendor note), and
+step-by-step (guide) structures — callouts wrap the quirk and workaround bodies.
+
 ## Worked examples
 
 ### Example 1 — Explicit trigger, new article

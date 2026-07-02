@@ -59,6 +59,11 @@ Wait for the user to decide before proceeding.
   - Add it to `_MOC.md` under the appropriate section
   - Add a row to the Quick Links table in the hub
 
+**Obsidian syntax.** Follow `references/obsidian-syntax.md`. Decisions written to
+`## Key Decisions` get a `^dec-YYYY-MM-DD-n` block ID; the paired Changelog entry
+links to it as `[[<Project> — Project Context#^dec-YYYY-MM-DD-n]]`. The
+`## Open Questions & Blockers` table format never changes (hub-schema.md).
+
 **Step 6: Blocker Cleanup**
 
 When a blocker is resolved:

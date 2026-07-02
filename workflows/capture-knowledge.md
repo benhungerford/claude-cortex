@@ -49,6 +49,11 @@ tags:
    - Structured sections appropriate to the knowledge type
    - Practical, actionable content — not theoretical
 
+**Obsidian syntax.** Follow `references/obsidian-syntax.md`. Vendor quirks are
+`> [!warning]` callouts; workarounds/recipes are `> [!tip]` callouts. Keep the
+Problem/Solution/Example (pattern), Quirk/Workaround/Context (vendor note), and
+step-by-step (guide) structures — callouts wrap the quirk and workaround bodies.
+
 4. Add to `Knowledge Base/_MOC.md` under the appropriate section
 
 **If updating an existing article:**
