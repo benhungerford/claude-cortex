@@ -1,5 +1,13 @@
 # Claude Cortex Plugin — Changelog
 
+## v1.5.0 — 2026-07-01
+
+**Obsidian syntax, Bases dashboards, defuddle integration.**
+
+- **Obsidian syntax in all write paths** — decisions get linkable block IDs, meeting notes open with summary callouts, Knowledge Base quirks/tips use callouts, shared content is embedded instead of copied (`references/obsidian-syntax.md`).
+- **Bases dashboards** — new `generate_base` MCP tool; `scaffold_project` gives every new client a live `<Client> — Projects.base` view embedded in its MOC; `bin/generate-dashboards.js` backfills existing clients (dry-run by default).
+- **Defuddle web clipping** — `cortex-knowledge` and generated daily routines prefer `defuddle parse <url> --md` for article fetches, with WebFetch fallback.
+
 ## v1.4.3 — 2026-06-25
 
 **Boot hook crash fix.**
