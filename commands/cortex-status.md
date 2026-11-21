@@ -12,9 +12,6 @@ Invoke the `cortex-check-status` skill against the project named in `$ARGUMENTS`
 1. Load `cortex-check-status`.
 2. If `$ARGUMENTS` is empty: list the top 3 projects by `updated` date from personality.md and the vault's project folders, then wait for the user to pick.
 3. If `$ARGUMENTS` is a non-empty string: pass it as the project identifier and run the check-status workflow (`workflows/check-status.md`).
-4. Surface the focused summary with file citations.
-5. Never write. This is read-only.
-
-**Failure modes:** delegate to `cortex-check-status`'s failure modes table — no extra handling here.
+4. Give the short summary with file citations. This command only reads.
 
 **Related:** `skills/cortex-check-status/SKILL.md`

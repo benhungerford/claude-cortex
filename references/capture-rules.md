@@ -1,100 +1,46 @@
-# Capture Rules — Tier 1 / 2 / 3
+# Capture rules: Tier 1 / 2 / 3
 
-Cross-cutting reference. This file defines the ambient behavior Cortex applies during **every** conversation in any runtime, regardless of which skill is active. It is loaded by `cortex-boot` and cited by every write-side skill (`cortex-update-context`, `cortex-process-meeting`, `cortex-knowledge`, `cortex-ingest-project`).
+What Cortex captures from ordinary conversation, whichever skill is active. The session-start block points here; the write skills (`cortex-update-context`, `cortex-process-meeting`, `cortex-knowledge`, `cortex-ingest-project`) follow it. Capture is a background behavior, not a command the user runs.
 
-This file replaces the `cortex-capture` standalone skill originally proposed in the plugin migration plan. Capture is not a task the user triggers — it is a cross-cutting behavior.
+## The two questions
 
----
+1. Would the user want to find this in six months? If not, don't capture it.
+2. Do I know exactly where it goes? If yes, Tier 1. If not, Tier 2.
 
-## The two-question heuristic
+## Tier 1: capture, then confirm in one line
 
-Before capturing anything, ask yourself two questions in order:
-
-1. **"Would the user want to find this in six months?"** If no → do not capture. Move on.
-2. **"Do I know exactly where it goes?"** If yes → capture silently (Tier 1). If no → ask the user (Tier 2).
-
-These two questions eliminate both over-capture (chat noise in the vault) and under-capture (decisions lost in conversation).
-
----
-
-## Tier 1 — Always capture, silently, with a one-line confirmation
-
-Fires automatically. No user confirmation required. A brief confirmation line goes in chat so the user knows the vault was updated.
-
-| Signal in conversation | Destination | Confirmation line |
+| Signal | Destination | Confirmation |
 |---|---|---|
-| User makes a scope, strategy, or direction decision | Project hub + `Changelog.md` | `Logged to <Project> Changelog.` |
-| New blocker discovered | Project hub Open Questions + `Changelog.md` | `Added blocker to <Project>.` |
-| Existing blocker resolved | Remove row from Open Questions + log resolution in `Changelog.md` | `Cleared blocker on <Project>.` |
-| Meeting transcript or summary shared | Project `Notes/` folder (via `cortex-process-meeting`) | `Meeting note filed in <Project>.` |
-| Client or collaborator preference stated | Project hub Contacts section | `Updated <Project> client preferences.` |
-| Reusable pattern surfaces in conversation | `Knowledge Base/` (via `cortex-knowledge`) | `Extracted pattern to Knowledge Base.` |
+| Scope, strategy, or direction decision | Hub + `Changelog.md` | `Logged to <Project> Changelog.` |
+| New blocker | Hub Open Questions + `Changelog.md` | `Added blocker to <Project>.` |
+| Blocker resolved | Remove the hub row; record it in `Changelog.md` | `Cleared blocker on <Project>.` |
+| Meeting transcript or summary | `Notes/` via `cortex-process-meeting` | `Meeting note filed in <Project>.` |
+| Client or collaborator preference | Hub Contacts | `Updated <Project> client preferences.` |
+| Reusable pattern | `Knowledge Base/` via `cortex-knowledge` | `Extracted pattern to Knowledge Base.` |
 
-**Tier 1 never asks permission.** If the conversation contains one of these signals and the destination is obvious, write it.
+Tier 1 doesn't ask first, with one exception: at L3, a signal Cortex inferred (the user didn't say "log that", "we decided", or similar) gets a one-line confirm before the write. Explicit phrases write at every level. See `activation-levels.md`.
 
-**Exception — inferred Tier 1 at L3.** This silent-write rule has one carve-out, tied to activation level (see `activation-levels.md`). The distinction is *how the signal arrived*:
-- **Explicit trigger** ("log that", "we decided", "new blocker"): always proceeds as Tier 1 and writes silently — at every level, including L3.
-- **Inferred signal** (Cortex picked up a decision/scope-change/blocker ambiently, the user did not ask to log it): writes silently at L1/L2, but at **L3** requires a one-line confirm before writing — e.g. `Log that wholesale portal moved out of scope to FKT? (y)`. Rationale: at L3 the user is heads-down in a repo and an inferred write they didn't request is more likely to be debugging chatter than a real decision. Write only on confirmation.
+## Tier 2: ask first
 
----
+When the information could belong to more than one project, contradicts something documented, could be project-specific or reusable, or is the user thinking aloud rather than deciding. Ask one sentence at the next natural pause: "Want me to log the Shopify webhook decision to FKT, or is it still tentative?" A yes makes it Tier 1. A no drops it for the rest of the session.
 
-## Tier 2 — Ask before capturing
+## Tier 3: don't capture
 
-The destination is ambiguous, or the user may not want it captured yet.
+How-to questions, debugging with nothing reusable (log a notable fix in the project Changelog, skip the rest), brainstorming without a decision, unrelated chat, rephrasings and acknowledgements, and anything the user says not to log.
 
-Trigger this tier when:
-- Information could apply to multiple projects (ask: "Is this for <A>, <B>, or both?")
-- New info contradicts an existing documented decision (flag the conflict — see Conflict Rule below)
-- Knowledge straddles project-specific vs. reusable (ask: "Should this live in <Project> or in Knowledge Base?")
-- Exploratory information — user is thinking out loud, not deciding
+## How to capture
 
-**How to ask:** one sentence, at the next natural pause. Never interrupt mid-thought.
+- Wait for a natural break; don't interrupt a thought.
+- Three or more captures close together share one confirmation: "Updated <Project>: logged the nav decision, cleared the Figma blocker, added a client preference." Order: decisions, blockers, preferences.
+- Confirmations are one line: what and where.
+- If a capture contradicts something documented, stop and show both before writing (the conflict rule in `cortex-update-context`).
+- Otherwise capture should go unnoticed apart from the confirmation line.
 
-> "Want me to log the Shopify webhook decision to FKT, or is it still tentative?"
+## When it goes wrong
 
-If the user says yes → promote to Tier 1. If no → drop it entirely (do not retain for later re-asking in the same session).
-
----
-
-## Tier 3 — Never capture
-
-Even if the user would find it interesting, these do not go in the vault. They create noise and make real captures harder to find.
-
-- Casual how-to questions ("how do I reverse a list in Python?")
-- Debugging sessions with no reusable pattern (bug specific to one line in one project — log in project changelog only if the fix is notable, otherwise skip)
-- Brainstorming that hasn't led to a decision
-- General conversation unrelated to work
-- Rephrasings, clarifications, or acknowledgements
-- Anything the user explicitly says "don't log this" about
-
----
-
-## Capture behavior rules
-
-**Never interrupt.** Capture at the next natural break in the conversation, not mid-sentence and not mid-thought.
-
-**Batch consecutive captures.** If three or more captures happen in quick succession, collapse them into one confirmation:
-
-> "Updated <Project>: logged the nav decision, cleared the Figma blocker, added a new client preference."
-
-**One-line confirmations only.** Never write a paragraph explaining what you captured. The user sees the diff; tell them what and where, nothing more.
-
-**The Conflict Rule.** If a new capture contradicts existing documented information, **stop and flag**. Never silently overwrite.
-
-> `CONFLICT DETECTED: the new decision to use Stripe contradicts the existing Tech Stack note which lists Braintree. How would you like to resolve this?`
-
-Wait for the user's decision before writing anything.
-
-**The Invisible Rule.** The user should be able to have a normal conversation with Cortex active and never notice capture happening. The only time capture surfaces is the one-line confirmation after the fact or the Conflict flag.
-
----
-
-## Failure modes
-
-| Failure | What to do |
+| Case | Do |
 |---|---|
-| Tier 1 destination doesn't exist yet (e.g. project not scaffolded) | Escalate to `cortex-ingest-project` to scaffold first, then capture into the new project. Do not silently create ad-hoc files. |
-| Vault write fails (permissions, missing file) | Surface the error in chat, retain the capture intent in conversation context, do not pretend it was written. |
-| Two Tier 1 signals in the same utterance (e.g. a decision AND a blocker) | Batch them into one confirmation line. Order: decisions → blockers → preferences. |
-| User says "don't capture that" after Cortex has already captured | Remove the entry (revert the write), log the revert in `_changelog.txt`, confirm in one line. |
-| User says "capture that" about something from five turns ago | Go back, find the reference, apply the two-question heuristic, capture if it passes. |
+| The destination project doesn't exist | Hand off to `cortex-ingest-project`, then capture. Don't make ad-hoc files. |
+| The write fails | Say so; keep the intent in the conversation; don't claim it was written. |
+| "Don't capture that" after the fact | Revert the write, log the revert, confirm in one line. |
+| "Capture that" about something from earlier | Find it, run the two questions, capture if it passes. |

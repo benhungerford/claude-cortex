@@ -22,20 +22,15 @@ Generate a Weekly Review from current vault state and file it to `Reflections/`.
    - **Meetings filed** — list of new meeting notes with file citations
    - **Open questions for next week** — any unresolved blockers or decisions surfaced by the scan
 6. Write the file to `<vault_path>/Reflections/YYYY-MM-DD Weekly Review.md` with frontmatter `type: weekly-review`, `created`, `updated`, and tag `"#type/weekly-review"`.
-7. Append a `CREATED` entry to `_changelog.txt` per the changelog-format rule.
-8. Return the file path and a one-paragraph summary.
+7. Append a `CREATED` entry to `_changelog.txt` and add the review to `Reflections/_MOC.md` if the folder has one.
+8. Check: run `mcp__plugin_claude-cortex_cortex-vault__validate_frontmatter` on the review and confirm the MOC entry; fix anything that fails.
+9. Return the file path and a one-paragraph summary, e.g. "Filed weekly review covering 5 active projects, 3 blockers, 2 decisions, 4 new meetings."
 
-**Worked example:**
-User runs `/cortex-weekly` on 2026-04-10. Cortex reads `personality.md`, finds 5 active projects, reads each hub + last-7-days Changelog, reads `_changelog.txt` from 2026-04-04 onward, composes the review, writes `Reflections/2026-04-10 Weekly Review.md`, logs `CREATED`, and reports "Filed weekly review covering 5 active projects, 3 blockers, 2 decisions, 4 new meetings."
+**Edge cases:**
+- No active projects found: scan every project folder and ask the user to confirm the list.
+- `personality.md` missing: stop and hand off to `cortex-onboarding`.
+- A hub is missing or broken: skip that project, list it under "Open questions", and finish the rest.
+- `Reflections/` doesn't exist: create it, log `CREATED`.
+- A review for today already exists: write `-2` beside it and tell the user; overwrite nothing.
 
-**Failure modes:**
-
-| Symptom | Cause | Fix |
-|---|---|---|
-| No active projects found | Bucket MOCs empty or status fields missing | Fall back to scanning every project folder and ask the user to confirm |
-| `personality.md` missing | Vault not onboarded | Stop and hand off to `cortex-onboarding` |
-| A project hub is missing or corrupted | Orphaned project folder | Skip that project, note it in the review under "Open questions", do not fail the whole run |
-| `Reflections/` doesn't exist | Vault structure drift | Create the folder, log `CREATED`, continue |
-| Weekly review already exists for today's date | User re-ran the command | Append `-2` to the filename and overwrite nothing; warn the user |
-
-**Related:** `skills/cortex-check-status/SKILL.md` (for hub/changelog read patterns) · `.claude/rules/changelog-format.md` · `.claude/rules/frontmatter-and-tags.md`
+**Related:** `skills/cortex-check-status/SKILL.md` · the vault's `.claude/rules/changelog-format.md` and `frontmatter-and-tags.md`

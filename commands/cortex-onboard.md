@@ -15,6 +15,4 @@ Invoke the `cortex-onboarding` skill as a hard route.
 4. Otherwise run the onboarding workflow (`workflows/onboarding.md`) directly.
 5. On completion, surface the new vault path, the generated `personality.md` location, and any follow-up steps.
 
-**Failure modes:** delegate to `cortex-onboarding`'s failure modes — including the partial-reset flow when the user wants to redo setup.
-
 **Related:** `skills/cortex-onboarding/SKILL.md`

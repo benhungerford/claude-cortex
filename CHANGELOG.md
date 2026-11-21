@@ -1,5 +1,25 @@
 # Claude Cortex Plugin — Changelog
 
+## v2.0.0 — 2026-11-21
+
+**Updated for compatibility with Claude Opus 5.5 and Fable 5.2.**
+
+Breaking changes:
+
+- **The `cortex-boot` skill is removed.** Nothing forces a skill call at session start any more. Its rules (what to do at L1, L2 and L3, capture, ambient recall) now arrive inside the `<cortex-session>` block that the `session-start` hook injects. Anything that invoked `cortex-boot` by name should read that block instead. On surfaces where hooks do not run, call the `get_boot_context` MCP tool once.
+- **Startup context has a budget.** `budget_chars` defaults to 8000 and the whole rendered block is held under it. `personality.md` and `memory.md` are injected as short summaries (memory as a list of sections with line ranges), not in full. A config with `budget_chars: 0` should be changed to `8000`.
+
+Changes:
+
+- **Calmer startup context.** The block is a plain fact list: vault path, level, project with stage, blockers and open questions, inbox count, and a short "How to use this" list. The `<cortex-boot-required>` wrapper and its all-caps instructions are gone. On Ben's vault the block went from about 34,000 characters to about 5,000.
+- **Setup states are told apart.** A missing config or a vault with no `personality.md` gets a short "installed but not set up" block that offers `/cortex-onboard` once. A vault that exists but cannot be read (unmounted drive, bad config, permissions) says so and does not offer onboarding. `get_boot_context` returns the same two states as `not_set_up` and `unreadable`.
+- **Hub parsing.** Stage Tracker headings with an emoji, and hub-format `## Active Blockers` / `## Open Questions` lists, are read. Counts are taken before trimming. A section that cannot be read says "not parsed from the hub; call read_hub" instead of showing zero.
+- **MCP tool prefix fixed** in five skills (`cortex-update-context`, `cortex-ingest-project`, `cortex-process-meeting`, `cortex-check-status`, `cortex-coach`): `mcp__cortex-vault__*` is now `mcp__plugin_claude-cortex_cortex-vault__*`.
+- **Trimmed skills.** Skills, workflows and references are about half the words. Worked examples of obvious behavior and text that restated the vault's own rule files are cut; skills link to the vault's `.claude/rules/` instead. Onboarding detail moved to `references/onboarding/` and is read only when needed. Shouted instructions are rewritten as plain sentences with the same meaning.
+- **Closing checks on write skills.** `cortex-update-context`, `cortex-process-meeting`, `cortex-ingest-project`, `cortex-knowledge` and `cortex-register-repo` end by running `validate_frontmatter` on each note written, confirming the MOC entry resolves, and showing the result.
+- **Stop hook.** The `memory.md` flush is now visible: one line says what was saved.
+- Hook JSON is built with `json.dumps`, so control characters in vault text can no longer break the output.
+
 ## v1.5.0 — 2026-07-01
 
 **Obsidian syntax, Bases dashboards, defuddle integration.**

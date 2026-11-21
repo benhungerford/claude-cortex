@@ -2,7 +2,7 @@
 
 Cortex learns the user's vault over time. Some features are valuable but would be annoying if they fired on day one. This file defines how those **dormant features** are declared, when Cortex is allowed to suggest activating them, and how the user's decision is persisted.
 
-Loaded by `cortex-boot` during session startup (step 3 — scan for dormant-feature suggestions).
+Read when the session-start block's feature-suggestion rule applies, or when `check_dormant_features` reports a feature ready to offer.
 
 ---
 
@@ -72,7 +72,7 @@ progressive_features:
 
 ## Activation signal types
 
-Signals are tiny predicates that `cortex-boot` can evaluate cheaply by reading `_changelog.txt` and the vault's folder structure. Three signal types are supported:
+Signals are small predicates the `check_dormant_features` MCP tool evaluates cheaply by reading `_changelog.txt` and the vault's folder structure. Three signal types are supported:
 
 | Type | Meaning | Example |
 |---|---|---|

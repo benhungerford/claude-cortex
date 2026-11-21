@@ -145,21 +145,21 @@ describe('Check 2 — Trigger-phrase implementation integrity', () => {
   // Phrases the docs promise AND that the hook implements today. Each must be
   // present (case-insensitive substring) in hooks/user-prompt-submit.
   const ASSERTED_PHRASES = [
-    'log that',          // row 6  -> cortex-update-context
-    'we decided',        // row 7  -> cortex-update-context
-    'new blocker',       // row 8  -> cortex-update-context
-    "that's resolved",   // row 9  -> cortex-update-context (resolved capture)
-    'we got',            // row 9  -> cortex-update-context (W3.4 — promoted)
-    'we got the',        // row 9  -> cortex-update-context (W3.4 — promoted)
-    'file as a reference', // row 15 -> cortex-knowledge (W3.4 — promoted)
-    'status of',         // row 5  -> cortex-check-status
-    'where are we on',   // row 5  -> cortex-check-status
-    "what's blocking",   // row 5  -> cortex-check-status
-    'on track',          // row 5  -> cortex-check-status (W3.5 — promoted)
-    'catch me up',       // row 5  -> cortex-check-status (W3.5 — promoted)
-    'new project',       // row 10 -> cortex-ingest-project
-    'register this repo',// row 17 -> cortex-register-repo
-    'teach me',          // row 22 -> cortex-coach
+    'log that',          // cortex-update-context
+    'we decided',        // cortex-update-context
+    'new blocker',       // cortex-update-context
+    "that's resolved",   // cortex-update-context (resolved capture)
+    'we got',            // cortex-update-context (W3.4 — promoted)
+    'we got the',        // cortex-update-context (W3.4 — promoted)
+    'file as a reference', // cortex-knowledge (W3.4 — promoted)
+    'status of',         // cortex-check-status
+    'where are we on',   // cortex-check-status
+    "what's blocking",   // cortex-check-status
+    'on track',          // cortex-check-status (W3.5 — promoted)
+    'catch me up',       // cortex-check-status (W3.5 — promoted)
+    'new project',       // cortex-ingest-project
+    'register this repo',// cortex-register-repo
+    'teach me',          // cortex-coach
   ];
 
   // Phrases the audit flagged that the docs imply but the hook does NOT yet

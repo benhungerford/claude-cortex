@@ -6,9 +6,10 @@
 // WHY: Cortex boot normally runs via the bash hook hooks/session-start, which
 // shells out to python3 (hooks/lib/boot-context.py) to inject the
 // <cortex-session> block. On shell-less / python-less platforms (iPad, some
-// Cowork Desktop), no block is injected, so cortex-boot wrongly routes every
-// session to onboarding. This tool lets cortex-boot fetch the same JSON over
-// MCP as a fallback. (audit finding T12 / improvement W1.3)
+// Cowork Desktop), no block is injected. This tool returns the same JSON over
+// MCP so Claude can boot from it instead; its description carries the
+// level guidance the session block would have given. (audit finding T12 /
+// improvement W1.3; the cortex-boot skill was removed in 2.0.0)
 //
 // CONTRACT — keys/semantics mirror boot-context.py main():
 //   vault_path, activation_level (1|2|3), personality (string),
@@ -20,6 +21,8 @@
 //   * The token-budget (_budget) logic is OMITTED. MCP-first boot is the
 //     fallback path; truncation is a session-block concern owned by the hook /
 //     session-start. The full content is returned here verbatim.
+//   * personality and memory are the full files here. In the hook they are
+//     summaries (summarize_personality / summarize_memory in boot-context.py).
 //   * Open Questions & Blockers are parsed via lib/hub-schema.js
 //     (parseQuestionBlockerRows + classifyRows) — the SAME parser read-hub.js
 //     uses — rather than re-implementing parse_hub's regex. This guarantees
@@ -31,7 +34,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { getVaultPath } = require('../lib/vault-path.js');
 const { readFile } = require('../lib/file-ops.js');
 const { loadRegistry, findProjectByCwd } = require('../lib/registry.js');
 const { parseQuestionBlockerRows, classifyRows } = require('../lib/hub-schema.js');
@@ -211,46 +213,85 @@ function parseHub(vault, entry) {
   return result;
 }
 
+// ── Setup check (mirror of check_setup in boot-context.py) ──────────────────
+// Only a missing config.json, or a readable vault with no personality.md, is
+// "not set up". A config that won't parse, a vault folder that is missing or
+// unreadable (unmounted drive, unsynced iCloud, OS permission), or a
+// personality.md that can't be read is "unreadable": the user already has a
+// vault, so onboarding (which builds a new one and rewrites config.json) must
+// not be offered.
+
+function checkSetup(configPath, vaultOverride) {
+  let vault = vaultOverride || null;
+  if (!vault) {
+    if (!fs.existsSync(configPath)) {
+      return { status: 'not_set_up', reason: 'no config.json' };
+    }
+    let cfg;
+    try {
+      cfg = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    } catch (e) {
+      return { status: 'unreadable', reason: `config.json could not be read (${e.name})` };
+    }
+    vault = cfg && typeof cfg.vault_path === 'string' ? cfg.vault_path : null;
+    if (!vault) return { status: 'unreadable', reason: 'config.json has no vault_path' };
+  }
+  let stat;
+  try {
+    stat = fs.statSync(vault);
+  } catch {
+    return { status: 'unreadable', vault, reason: 'vault folder not found (drive unmounted or moved?)' };
+  }
+  if (!stat.isDirectory()) {
+    return { status: 'unreadable', vault, reason: 'vault path is not a folder' };
+  }
+  try {
+    fs.readdirSync(vault);
+  } catch (e) {
+    return { status: 'unreadable', vault, reason: `vault folder not readable (${e.code || e.name})` };
+  }
+  const pPath = path.join(vault, 'personality.md');
+  if (!fs.lstatSync(pPath, { throwIfNoEntry: false })) {
+    return { status: 'not_set_up', vault, reason: 'no personality.md' };
+  }
+  if (!fs.statSync(pPath, { throwIfNoEntry: false })?.isFile()) {
+    return { status: 'unreadable', vault, reason: 'personality.md is not a regular file' };
+  }
+  let personality;
+  try {
+    personality = fs.readFileSync(pPath, 'utf8');
+  } catch (e) {
+    return { status: 'unreadable', vault, reason: `personality.md could not be read (${e.code || e.name})` };
+  }
+  if (!personality.trim()) {
+    return { status: 'unreadable', vault, reason: 'personality.md is empty' };
+  }
+  return { status: 'ok', vault, personality };
+}
+
+function setupError(setup) {
+  const text = setup.status === 'not_set_up'
+    ? `Cortex is not set up (${setup.reason}). Offer /cortex-onboard once.`
+    : `Cortex could not read the vault${setup.vault ? ` at ${setup.vault}` : ''} ` +
+      `(${setup.reason}). The vault is set up, so don't offer onboarding; tell the ` +
+      'user in one line and suggest checking that the folder is mounted and readable.';
+  return {
+    content: [{ type: 'text', text: JSON.stringify({ error: setup.status, reason: setup.reason, vault_path: setup.vault || null, message: text }) }],
+    isError: true,
+  };
+}
+
 // ── Handler ──────────────────────────────────────────────────────────────────
 
 async function handler(args, vaultOverride) {
   const cwd = (args && typeof args.cwd === 'string' && args.cwd) || process.cwd();
 
-  // config_path is accepted for parity with boot-context.py's --config, but the
-  // JS vault resolver reads the canonical config itself; an explicit
-  // config_path is honored when given.
-  let vault = vaultOverride || null;
-  if (!vault && args && typeof args.config_path === 'string' && args.config_path) {
-    try {
-      const cfg = JSON.parse(fs.readFileSync(args.config_path, 'utf8'));
-      if (cfg.vault_path && fs.existsSync(cfg.vault_path) &&
-          fs.statSync(cfg.vault_path).isDirectory()) {
-        vault = cfg.vault_path;
-      }
-    } catch {
-      vault = null;
-    }
-  }
-  if (!vault) vault = getVaultPath();
-
-  if (!vault) {
-    return {
-      content: [{ type: 'text', text: 'Vault path not configured.' }],
-      isError: true,
-    };
-  }
-
-  const personality = readPersonality(vault);
-  if (!personality) {
-    // Parity with boot-context.py exit(1): no personality => onboarding needed.
-    return {
-      content: [{
-        type: 'text',
-        text: 'No personality.md found — onboarding needed.',
-      }],
-      isError: true,
-    };
-  }
+  const configPath = (args && typeof args.config_path === 'string' && args.config_path) ||
+    path.join(process.env.HOME || '', '.claude', 'cortex', 'config.json');
+  const setup = checkSetup(configPath, vaultOverride);
+  if (setup.status !== 'ok') return setupError(setup);
+  const vault = setup.vault;
+  const personality = setup.personality;
 
   const memory = readMemory(vault);
   const learnerProfile = readLearnerProfile(vault);
@@ -307,11 +348,19 @@ async function handler(args, vaultOverride) {
 module.exports = {
   name: 'get_boot_context',
   description:
-    'Pure-JS fallback that reproduces the session-start hook boot context as ' +
-    'JSON (vault_path, activation_level, personality, memory, recent_activity, ' +
-    'inbox_count, active_projects, project, feature_suggestion). cortex-boot ' +
-    'calls this when no <cortex-session> block was injected (shell-less / ' +
-    'python-less platforms).',
+    'Returns the Cortex boot context as JSON (vault_path, activation_level, ' +
+    'personality, memory, recent_activity, inbox_count, active_projects, ' +
+    'project, feature_suggestion). Call it once when no <cortex-session> block ' +
+    'was injected (hookless surfaces such as iPad or Cowork). Use ' +
+    'activation_level: L1 answer directly; L2 mention only a stale blocker or ' +
+    'urgent inbox item; L3 open with one line (project, stage, blocker count). ' +
+    'Hooks are not running on such a surface, so after a direct vault write ' +
+    'that skipped a Cortex write path, call append_changelog. Capture ' +
+    'decisions and blockers per references/capture-rules.md. On an error, ' +
+    'read its "error" field: hand off to cortex-onboarding only for ' +
+    '"not_set_up". For "unreadable" the vault exists but could not be read ' +
+    '(unmounted, unsynced, permission); tell the user that in one line and ' +
+    'do not offer onboarding.',
   inputSchema: {
     type: 'object',
     properties: {

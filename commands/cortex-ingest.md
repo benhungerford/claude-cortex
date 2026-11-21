@@ -13,8 +13,6 @@ Invoke the `cortex-ingest-project` skill against the input in `$ARGUMENTS`.
 2. If `$ARGUMENTS` is empty: ask the user what project to scaffold and wait for a response.
 3. If `$ARGUMENTS` looks like a filesystem path and the file exists: read it and pass the contents as the brief.
 4. Otherwise pass `$ARGUMENTS` directly as the brief/name and run the ingest workflow (`workflows/ingest-project.md`).
-5. Return the scaffolded paths and any follow-up questions the skill surfaced.
-
-**Failure modes:** delegate to `cortex-ingest-project`'s failure modes — no extra handling here.
+5. Run the skill's closing check, then return the scaffolded paths and any open questions.
 
 **Related:** `skills/cortex-ingest-project/SKILL.md`

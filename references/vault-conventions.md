@@ -1,99 +1,24 @@
-<overview>
+# Vault conventions
 
-Quick reference for vault conventions. Read personality.md in the vault root for the user's vault path, bucket terms, and personal preferences before applying these conventions.
+The vault's own rule files in `<vault>/.claude/rules/` are the authority. When they exist, read the one you need instead of relying on this summary:
 
-</overview>
+| Topic | Vault rule file |
+|---|---|
+| Frontmatter schemas, tag taxonomy | `frontmatter-and-tags.md` |
+| `_changelog.txt` format and action types | `changelog-format.md` |
+| Wikilinks, footers, MOC updates | `wikilink-guidelines.md` |
+| Meeting series threading | `meeting-threading.md` |
+| Where content goes | `routing-rules.md` |
+| Folder layout, required project files | `vault-structure.md` |
 
-<conventions>
+Read `personality.md` for the user's `bucket_term`, buckets, domains, and vocabulary.
 
-**Tag Quoting — Critical**
+## Defaults for a vault without rule files
 
-All YAML tags must be quoted strings. The `#` character is a YAML comment delimiter.
-
-```yaml
-tags:
-  - "#source/meeting"    # correct
-  - #source/meeting      # WRONG — becomes null
-```
-
-Full reference: see `frontmatter-and-tags.md` in the vault's `.claude/rules/` directory.
-
-**Tag Taxonomy**
-
-| Prefix | Values |
-|--------|--------|
-| #domain/ | **User-defined.** Whatever domain taxonomy the user declares in `personality.md` (e.g. a web dev might use `shopify, wordpress, frontend, backend, design, devops, seo`; a researcher might use `clinical, qualitative, grant`; a coach `intake, programming, nutrition`). Not a fixed list — read `personality.md` for this vault's domains. |
-| #source/ | meeting, client, internal, monday, figma, pastel, email |
-| #status/ | active, evergreen, archived |
-| #type/ | project-context, moc, meeting-notes, reference, spec, decision, qa-note, weekly-review, knowledge, changelog |
-
-The `#domain/<value>` tag passed to `scaffold_project` is freeform; the bucket
-`category` and top-level `bucket_root` are likewise driven by the user's
-`personality.md` buckets (defaults `Work/TBL/…` and `Work/Personal/…`, but any
-vault's own bucket terms and root folder are valid).
-
-**Changelog Format**
-
-Every vault operation must be logged to `_changelog.txt`:
-
-```
-[YYYY-MM-DD HH:MM] ACTION | FILE: [filename] | DEST: [destination path] | NOTE: [context]
-```
-
-Actions: MOVED, TAGGED, CREATED, PULLED, SKIPPED, UNKNOWN, MEMORY_UPDATED
-
-Full reference: see `changelog-format.md` in the vault's `.claude/rules/` directory.
-
-**Wikilinks**
-
-- Use `[[wikilinks]]` for all internal links (Obsidian-native)
-- Every note inside a bucket folder must include `*Project:* [[_MOC]]` in its footer
-- Cross-link related notes bidirectionally
-- When adding a note to a bucket folder, update that bucket's `_MOC.md`
-- 3-7 links per note is right; more than 10 is too broad
-- First occurrence only per note
-
-Footer format:
-```markdown
----
-*Related:* [[_MOC]] · [[Tech Stack & Architecture]] · [[2026-03-20 Client Call]]
-```
-
-Full reference: see `wikilink-guidelines.md` in the vault's `.claude/rules/` directory.
-
-**Obsidian syntax (callouts, embeds, block IDs)**
-
-All write paths follow `references/obsidian-syntax.md`: decisions get
-`^dec-YYYY-MM-DD-n` block IDs, meeting notes open with a `> [!summary]` callout,
-Knowledge Base quirks use `> [!warning]` / `> [!tip]`, and shared content is
-embedded (`![[Note#Section]]`) instead of copied. The hub
-`## Open Questions & Blockers` table is exempt — its pipe format is canonical.
-
-**Meeting Threading**
-
-Recurring meetings are linked chronologically with `*Previous:*` and `*Next:*` links. When adding a new meeting note to a recurring series, find the most recent prior instance and add bidirectional thread links.
-
-Full reference: see `meeting-threading.md` in the vault's `.claude/rules/` directory.
-
-**Routing Rules**
-
-| Content Type | Destination |
-|-------------|-------------|
-| Meeting notes (client calls, QA reviews, syncs) | `[bucket_term]/<Name>/Notes/` |
-| Project specs, decisions, trackers | `[bucket_term]/<Name>/` |
-| Reusable knowledge (patterns, guides, vendor notes) | `Knowledge Base/` |
-| Weekly reviews | `Weekly Reviews/` |
-| Non-project meetings (peer convos, networking) | `Meetings/` |
-| Unsorted or ambiguous | `_Inbox/` — leave and ask |
-
-Read `personality.md` for the user's bucket_term to fill in the routing paths above.
-
-Full reference: see `vault-structure.md` in the vault's `.claude/rules/` directory.
-
-**Frontmatter Format**
-
-Every note uses YAML frontmatter with at minimum: `created`, `updated`, `tags`. Project context hubs have additional fields: `type`, `project`, `client`, `status`, `health`.
-
-Full reference: see `frontmatter-and-tags.md` in the vault's `.claude/rules/` directory.
-
-</conventions>
+- **Tags are quoted strings:** `- "#source/meeting"`. Unquoted, the `#` starts a YAML comment and the tag becomes null.
+- **Tag prefixes:** `#type/` (project-context, moc, meeting-notes, reference, knowledge, changelog, …), `#source/` (meeting, client, email, granola, …), `#status/` (active, evergreen, archived), and `#domain/` with whatever domains `personality.md` declares.
+- **Every note** has `created` and `updated` in ISO format; bump `updated` on each edit. Project hubs also carry `type`, `project`, `client`, `status`.
+- **Changelog line:** `[YYYY-MM-DD HH:MM] ACTION | FILE: <filename> | DEST: <relative path> | NOTE: <context>`. Actions: CREATED, MOVED, RENAMED, TAGGED, UPDATED, LINKED, PULLED, ARCHIVED, SKIPPED, UNKNOWN, MEMORY_UPDATED, MOC_UPDATED, STATUS_CHANGED. `append_changelog` checks the format.
+- **Links:** `[[wikilinks]]` for internal links, both directions. Notes inside a bucket end with `*Related:* [[_MOC]] · …`. Adding a note to a folder means adding it to that folder's `_MOC.md`.
+- **Routing:** project meetings go to `<bucket_term>/<Client>/<Project>/Notes/`; client-level meetings to the client's `Meetings/`; other meetings to `Meetings/`; reusable knowledge to `Knowledge Base/`; anything unclear stays in `_Inbox/` and gets raised with the user.
+- **Obsidian syntax** (block IDs, callouts, embeds): `references/obsidian-syntax.md`.

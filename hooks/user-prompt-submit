@@ -174,7 +174,7 @@ if [[ -z "$SKILL" ]]; then
             CONFIDENCE="high"
             TRIGGER_DESC="resolved trigger"
             ;;
-        # W3.4 (T04): "we got <X>" / "we got the <X>" is documented (row 9) as a
+        # W3.4 (T04): "we got <X>" / "we got the <X>" is documented (cortex-update-context) as a
         # blocker-resolved capture but was never implemented. It's softer than
         # an explicit "resolved" — route at medium so the skill confirms which
         # blocker cleared rather than hard-filing.
@@ -198,7 +198,7 @@ if [[ -z "$SKILL" ]]; then
 fi
 
 # ── 3e: Knowledge triggers ─────────────────────────────────────────────────
-# W3.2/W3.4 (T18/T04): "file as a reference" is a documented trigger (row 15)
+# W3.2/W3.4 (T18/T04): "file as a reference" is a documented trigger (cortex-knowledge)
 # that was missing. Bare "reusable" over-fires on words like "reusable
 # component" mid-discussion, so it now requires a phrase anchor ("this is
 # reusable", "reusable pattern", "reusable knowledge") rather than the bare

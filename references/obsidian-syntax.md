@@ -50,8 +50,8 @@ Types Cortex uses (others exist but keep to these):
 
 Foldable: `> [!type]-` starts collapsed. Use collapsed for long meeting TL;DRs.
 
-**NEVER** use callouts for the hub `## Open Questions & Blockers` table —
-that table's pipe format is machine-parsed (see `hub-schema.md`).
+Don't wrap the hub `## Open Questions & Blockers` table in a callout; its
+pipe format is machine-parsed (see `hub-schema.md`).
 
 ## Embeds
 

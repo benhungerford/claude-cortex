@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This file is the behavioral spec for the 8 `cortex-*` skills in this plugin, expressed as 10 scripted, end-to-end scenarios. Every scenario is traceable to either a literal trigger phrase or a structural signal defined in `references/trigger-phrases.md`, and to the documented behavior in the relevant `SKILL.md`.
+This file is the behavioral spec for the 10 `cortex-*` skills in this plugin, expressed as 10 scripted, end-to-end scenarios. Every scenario is traceable to either a literal trigger phrase or a structural signal defined in `references/trigger-phrases.md`, and to the documented behavior in the relevant `SKILL.md`.
 
 In Stage 2 these scenarios are **human-runnable**: a human reader sets up the pre-conditions, triggers the session, and manually verifies the expected behavior, mutations, and chat output. In Stage 4 these same scenarios will be converted into code-runnable tests (likely a harness that spins up a sandbox vault, fakes cwd, and snapshots the filesystem after each run).
 
@@ -11,7 +11,7 @@ In Stage 2 these scenarios are **human-runnable**: a human reader sets up the pr
 For each scenario:
 
 1. **Set up pre-conditions.** Put the vault, config, and cwd into the exact state described. This may mean creating a temporary vault, deleting `~/.claude/cortex/config.json`, or standing up a fake repo.
-2. **Open a new Claude Code session** with the specified cwd. Do not continue an existing session — every scenario assumes a cold session start so `cortex-boot` fires fresh.
+2. **Open a new Claude Code session** with the specified cwd. Do not continue an existing session — every scenario assumes a cold session start so the session-start hook injects a fresh `<cortex-session>` block.
 3. **Send the user input verbatim.** Copy the exact phrase from the scenario (or simulate the structural signal — e.g., paste the transcript, run the Granola MCP tool).
 4. **Verify the expected skill was routed to** by checking Cortex's chat output and the sequence of tool calls. The routing hook or skill-loader should pick up the trigger match.
 5. **Verify the expected behavior** by reading the chat transcript and the file mutations.
@@ -30,7 +30,7 @@ Unless a scenario explicitly says otherwise, assume:
 - `<vault>/memory.md` exists.
 - `<vault>/_changelog.txt` exists and is writable.
 - `<vault>/.claude/cortex/registry.json` exists with entries for the known active projects (FKT, Jumpstart SC, FOND, Bubl Shots, Apex Resolve, Cortex, The Workout App, benhungerford.com, YoungWilliams).
-- The Stage 2 `cortex-boot` behavior fires on the first message of each session (not yet a SessionStart hook).
+- The SessionStart hook injects the `<cortex-session>` block before the first message of each session.
 - Today's date is 2026-04-08.
 
 Scenarios that need a non-baseline state will call it out in **Pre-conditions**.
@@ -48,11 +48,11 @@ Scenarios that need a non-baseline state will call it out in **Pre-conditions**.
 
 **User input:** `hey`
 
-**Expected skill routed to:** `cortex-onboarding` (via hard handoff from `cortex-boot` step 1).
+**Expected skill routed to:** `cortex-onboarding` (no `<cortex-session>` block is injected, and `get_boot_context` returns an error).
 
 **Expected behavior:**
-- `cortex-boot` runs, reads (or fails to read) `~/.claude/cortex/config.json`, detects the file is missing, and hands off to `cortex-onboarding` with `reason="no config"`.
-- `cortex-boot` produces no other visible output.
+- The session-start hook finds no `~/.claude/cortex/config.json` and injects nothing. Claude calls `get_boot_context`, gets an error, and hands off to `cortex-onboarding` with `reason="no config"`.
+- No other visible output before onboarding starts.
 - `cortex-onboarding` opens with the warm intro sentence ("This is Cortex — a system that turns Claude and Obsidian into your second brain...") and asks the first discovery question.
 - It does NOT proceed to Step 5 (The Build) without the user answering the discovery questions — only the first turn is in scope for this test.
 
@@ -66,7 +66,7 @@ Scenarios that need a non-baseline state will call it out in **Pre-conditions**.
 
 ---
 
-## Scenario 2 — L1 passive session, unrelated question → `cortex-boot` silent, no writes
+## Scenario 2 — L1 passive session, unrelated question → Cortex silent, no writes
 
 **Trigger phrase(s) or structural signal:** Structural. Session start, vault present, cwd unregistered, no orphaned stub. Row 4 of the routing table.
 
@@ -77,14 +77,14 @@ Scenarios that need a non-baseline state will call it out in **Pre-conditions**.
 
 **User input:** `how do I reverse a list in Python?`
 
-**Expected skill routed to:** `cortex-boot` only. No task skill fires. `cortex-boot` sets activation level to **L1 (Passive)**.
+**Expected skill routed to:** None. No task skill fires. The `<cortex-session>` block shows activation level **L1 (Passive)**.
 
 **Expected behavior:**
-- `cortex-boot` reads config, `personality.md`, `memory.md`, and the last 50 lines of `_changelog.txt` silently.
+- The session-start hook reads config, `personality.md`, `memory.md`, and the tail of `_changelog.txt`, and injects the block silently.
 - `workflows/resolve-cwd.md` returns `{status: "unregistered"}`.
 - Activation level is L1.
 - Capture rules are loaded into working memory for the remainder of the session.
-- `cortex-boot` surfaces **nothing** about the vault.
+- Claude surfaces **nothing** about the vault.
 - Claude answers the Python question directly (e.g., `list[::-1]` or `reversed(list)`), like any normal Claude Code session without Cortex. The response must not contain any opening line about a project, blockers, or vault state.
 
 **Expected vault mutations:** **None.** L1 boot is read-only. `_changelog.txt` is NOT written because nothing changed.
@@ -99,7 +99,7 @@ Scenarios that need a non-baseline state will call it out in **Pre-conditions**.
 
 ## Scenario 3 — L3 session start in a registered repo → boot + resolve-cwd + opening line with blockers
 
-**Trigger phrase(s) or structural signal:** Structural. Session start, cwd matches a registered repo in `registry.json`. Rows 4 and 19 of the routing table (cortex-boot step 4 → internal handoff to cortex-register-repo's resolve-cwd sub-operation).
+**Trigger phrase(s) or structural signal:** Structural. Session start, cwd matches a registered repo in `registry.json`. Rows 4 and 19 of the routing table (the session-start hook resolves cwd the same way cortex-register-repo's resolve-cwd does).
 
 **Pre-conditions:**
 - Baseline vault state.
@@ -110,12 +110,10 @@ Scenarios that need a non-baseline state will call it out in **Pre-conditions**.
 
 **User input:** `morning, let's pick up where we left off`
 
-**Expected skill routed to:** `cortex-boot` → internal handoff to `cortex-register-repo` (resolve-cwd sub-operation, read-only). Activation level is escalated to **L3 (Full Project)**.
+**Expected skill routed to:** None. The `<cortex-session>` block shows activation level **L3 (Full Project)**.
 
 **Expected behavior:**
-- `cortex-boot` steps 1–3 complete silently.
-- Step 4 calls `workflows/resolve-cwd.md`, which walks up from cwd, matches the FKT entry in the registry, and returns `{match: <FKT project>}`.
-- Boot reads the FKT Project Context hub and loads open blockers into session memory.
+- The session-start hook walks up from cwd, matches the FKT entry in the registry, reads the FKT Project Context hub, and puts its stage and open blockers in the block.
 - One opening line is emitted containing: project name, current stage, open blocker count, and a brief hint at what the blockers are.
 - No dormant-feature suggestion fires during boot (per Step 5: max one queued, offered at the next natural pause).
 

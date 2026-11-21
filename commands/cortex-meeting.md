@@ -13,8 +13,6 @@ Invoke the `cortex-process-meeting` skill against the input in `$ARGUMENTS`.
 2. If `$ARGUMENTS` is empty: ask the user for the transcript and wait for a response.
 3. If `$ARGUMENTS` looks like a filesystem path and the file exists: read it and pass the contents as the transcript.
 4. Otherwise pass `$ARGUMENTS` directly as the transcript and run the process-meeting workflow (`workflows/process-meeting.md`).
-5. Return the filed path, series threading status (Previous/Next links), and any decisions/blockers extracted into the project hub.
-
-**Failure modes:** delegate to `cortex-process-meeting`'s failure modes — including the project vs. client routing nuance.
+5. Run the skill's closing check, then return the filed path, threading status, and the decisions and blockers sent to the hub.
 
 **Related:** `skills/cortex-process-meeting/SKILL.md`

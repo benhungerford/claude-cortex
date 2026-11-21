@@ -1,64 +1,17 @@
-# Register a repo against a vault project
+# Register a repo
 
-**When to use:** When the user has a code repo that should be linked to a vault project, and either (a) you're setting up a new project, (b) the user explicitly asks to register a repo, or (c) you're processing the backfill flow.
+Used when a new project links a repo, when the user asks to register one, and once per confirmed match in backfill.
 
-## Inputs
+Inputs: `project_id` (slug, e.g. `jumpstart-sc-wordpress-build`), `vault_path` (relative to the vault), `context_file` (the hub filename), `repo_path` (absolute). If the user asked directly, derive `repo_path` from the cwd when you can and fuzzy-match the project with `list_projects`; ask only for what's missing.
 
-- `project_id` — slug for the project (e.g. `jumpstart-sc-wordpress-build`)
-- `vault_path` — relative path inside the vault (e.g. `Work/Personal/Jumpstart SC/WordPress Website Build`)
-- `context_file` — filename of the project context file (e.g. `WordPress Website Build — Project Context.md`)
-- `repo_path` — absolute path to the repo root
+1. **Validate.** `repo_path` exists and is a directory, and no other project's `repo_paths` holds it. On a conflict, show the owning project and ask: move it, leave it, or cancel.
+2. **Update the registry.** Call `register_repo`. Without the MCP server, edit `<vault>/.claude/cortex/registry.json` by hand: append to the matching project's `repo_paths`, or add `{id, vault_path, context_file, repo_paths: [repo_path]}`. Keep 2-space indent and a trailing newline.
+3. **Write the stub.** If `<repo_path>/CLAUDE.md` doesn't exist, copy `${CLAUDE_PLUGIN_ROOT}/assets/repo-claude-stub.md` there. If it exists, show the first 20 lines and ask before replacing. If the user keeps their own file, tell them the orphan check only recognizes the Cortex stub, so registration in the registry is what matters.
+4. **Log** to `<vault>/_changelog.txt`: one `UPDATED` line for `registry.json` (or `CREATED` if the file is new) noting the repo and project, and a `CREATED` line for the stub if you wrote one.
+5. **Run the closing check,** then confirm:
 
-## Procedure
-
-**Step 1: Validate the repo path**
-
-- Confirm `repo_path` exists and is a directory. If not, surface the error and stop.
-- Confirm `repo_path` is not already in another project's `repo_paths`. If it is, surface a conflict and ask the user how to resolve.
-
-**Step 2: Update the registry**
-
-Load `<vault>/.claude/cortex/registry.json`.
-
-- If a project with `id == project_id` already exists, append `repo_path` to its `repo_paths` list (if not already present).
-- Otherwise, add a new entry:
-
-```json
-{
-  "id": "<project_id>",
-  "vault_path": "<vault_path>",
-  "context_file": "<context_file>",
-  "repo_paths": ["<repo_path>"]
-}
-```
-
-Write the registry back. Preserve formatting (2-space indent, trailing newline).
-
-**Step 3: Write the stub CLAUDE.md**
-
-Check whether `<repo_path>/CLAUDE.md` exists.
-
-- **If not:** Copy the contents of `${CLAUDE_PLUGIN_ROOT}/assets/repo-claude-stub.md` to `<repo_path>/CLAUDE.md`. `${CLAUDE_PLUGIN_ROOT}` is the plugin install path exposed by Claude Code. Confirm to the user: *"Wrote Cortex stub to `<repo_path>/CLAUDE.md`."*
-- **If yes:** Show the user the existing first 20 lines and ask: *"A `CLAUDE.md` already exists in this repo. Replace it with the Cortex stub? (yes / no / show full diff)"* On `yes`, replace it. On `no`, leave it alone but warn that Cortex won't auto-detect this repo on cwd resolution unless the existing CLAUDE.md mentions Cortex.
-
-**Step 4: Log to vault changelog**
-
-Append to `<vault>/_changelog.txt`:
-
-```
-[YYYY-MM-DD HH:MM] CREATED | FILE: registry.json | DEST: .claude/cortex/registry.json | NOTE: Registered repo <repo_path> against project <project_id>
-```
-
-If you also wrote a stub, add a second line:
-
-```
-[YYYY-MM-DD HH:MM] CREATED | FILE: CLAUDE.md | DEST: <repo_path>/CLAUDE.md | NOTE: Cortex repo stub
-```
-
-**Step 5: Confirm to user**
-
-```
-✓ Registered <project_id>
+```text
+Registered <project_id>
   Repo: <repo_path>
   Stub: <wrote new | kept existing | replaced existing>
 ```

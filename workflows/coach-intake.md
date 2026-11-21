@@ -1,12 +1,6 @@
-<required_reading>
-**Read these reference files NOW:**
-1. personality.md (in vault root — provides identity, mental_model, tools context)
-2. references/vault-conventions.md (frontmatter, wikilinks, MOC rules)
-</required_reading>
+# Coach intake
 
-<process>
-
-**When to trigger:** First invocation of cortex-coach when `Knowledge Base/Growth/_profile.md` does not exist.
+First run of `cortex-coach`, when `Knowledge Base/Growth/_profile.md` doesn't exist. Read `personality.md` at the vault root first.
 
 **Step 1: Scaffold the Growth folder**
 
@@ -122,13 +116,12 @@ tags:
 - Initial profile — calibration notes will develop over time as coaching interactions accumulate.
 ```
 
-**Step 7: Log and confirm**
+**Step 7: Check, log, and confirm**
 
-- Log each created file to `_changelog.txt` via the post-tool-use hook (automatic).
-- Confirm: "Growth tracking set up. Profile bootstrapped from your vault. Ready to coach."
+- Run `validate_frontmatter` on `_MOC.md`, `_goals.md`, and `_profile.md`, and confirm `Knowledge Base/_MOC.md` links to `Growth/_MOC`. Fix anything that fails.
+- The PostToolUse hook logs each created file to `_changelog.txt`.
+- Confirm: "Growth tracking set up. Profile bootstrapped from your vault."
 
-**Step 8: Deliver first guidance**
+**Step 8: First guidance**
 
-Immediately transition to the main coaching workflow (`workflows/coach.md`) to deliver the user's first piece of guidance based on what was just learned. Do not end the intake without providing value.
-
-</process>
+Go straight into `workflows/coach.md` and give the user their first piece of guidance, so the intake ends with something useful.

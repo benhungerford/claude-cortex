@@ -2,8 +2,11 @@
 set -euo pipefail
 
 # session-start — Load vault context before the model's first turn.
-# Calls hooks/lib/boot-context.py for all vault reading and cwd resolution.
-# If config is missing or vault doesn't exist, exits silently (onboarding mode).
+# hooks/lib/boot-context.py reads the vault and resolves cwd to a level;
+# hooks/lib/render-session.py turns that JSON into the <cortex-session> block.
+# Not set up (exit 3): emits a short block offering /cortex-onboard.
+# Set up but unreadable (exit 4): emits a short block naming the vault path and
+# saying not to offer onboarding. Any other failure: silent.
 
 # ── Resolve paths ────────────────────────────────────────────────────────────
 
@@ -79,13 +82,53 @@ if [[ -d "$NS_ROOT" ]]; then
     find "$NS_ROOT" -mindepth 1 -maxdepth 1 -type d -mtime +1 -exec rm -rf {} + 2>/dev/null || true
 fi
 
-# ── Call Python module ──────────────────────────────────────────────────────
+# ── Output helpers ──────────────────────────────────────────────────────────
 
+# JSON is built in Python (json.dumps) so any control character in vault text
+# is escaped. render-session.py picks the wrapper for Cursor / Claude Code /
+# other runtimes.
+emit_block() {
+    printf '%s' "$1" | python3 "$PLUGIN_ROOT/hooks/lib/render-session.py" --wrap
+}
+
+# ── Call Python module ──────────────────────────────────────────────────────
+# Exit 3 from boot-context.py: not set up (no config.json, or a readable vault
+# with no personality.md). This block is what starts onboarding on a first
+# install. Exit 4: set up but unreadable (bad config, unmounted vault, read
+# error); never offer onboarding then, since it would build a new vault and
+# rewrite config.json. Any other failure stays silent.
+
+BOOT_RC=0
 BOOT_JSON="$(python3 "$PLUGIN_ROOT/hooks/lib/boot-context.py" \
     --config "$CONFIG_FILE" \
-    --cwd "${PWD:-/}" 2>/dev/null)" || exit 0
+    --cwd "${PWD:-/}" 2>/dev/null)" || BOOT_RC=$?
 
-if [[ -z "$BOOT_JSON" ]]; then
+if [[ "$BOOT_RC" -eq 3 ]]; then
+    emit_block "<cortex-session>
+Claude Cortex is installed but not set up yet (no vault config or personality.md found).
+Offer /cortex-onboard once, in one line, when it fits; don't repeat it, and answer the user's question first.
+</cortex-session>"
+    exit 0
+fi
+
+if [[ "$BOOT_RC" -eq 4 ]]; then
+    FAIL_LINE="$(python3 -c "
+import json, sys
+try:
+    d = json.loads(sys.stdin.read())
+except Exception:
+    d = {}
+where = d.get('vault_path') or 'the configured path'
+print(f\"Claude Cortex could not read the vault at {where} ({d.get('reason') or 'unknown reason'}).\", end='')
+" <<< "$BOOT_JSON" 2>/dev/null || printf 'Claude Cortex could not read its vault.')"
+    emit_block "<cortex-session>
+$FAIL_LINE
+The vault is set up, so don't offer onboarding. If the user asks for vault work, tell them in one line and suggest checking that the folder is mounted and readable.
+</cortex-session>"
+    exit 0
+fi
+
+if [[ "$BOOT_RC" -ne 0 || -z "$BOOT_JSON" ]]; then
     exit 0
 fi
 
@@ -112,95 +155,6 @@ VAULT_PATH_VALUE="$(python3 -c "import json,sys; print(json.loads(sys.stdin.read
 printf '%s' "$VAULT_PATH_VALUE" > "$NS_DIR/vault-path.txt"
 printf '%s' "$VAULT_PATH_VALUE" > "$CACHE_DIR/vault-path.txt"
 
-# ── Build session block ─────────────────────────────────────────────────────
+# ── Build and print the session block (hook JSON, capped at the budget) ─────
 
-SESSION_BLOCK="$(python3 -c "
-import json, sys
-
-data = json.loads(sys.stdin.read())
-lines = []
-lines.append('<cortex-boot-required>')
-lines.append('EXTREMELY IMPORTANT: A <cortex-session> block is loaded below. Before responding to the FIRST user message of this session, and before invoking any other skill, you MUST invoke the cortex-boot skill (via the Skill tool) to interpret it.')
-lines.append('')
-lines.append('This is not negotiable. Skipping cortex-boot causes wrong-project answers, broken status checks, and missed activation-level behavior.')
-lines.append('')
-lines.append('After cortex-boot has run once in this session, do NOT re-invoke it on subsequent turns — the activation-level contract it applied stays in effect for the whole session.')
-lines.append('</cortex-boot-required>')
-lines.append('')
-lines.append('<cortex-session>')
-lines.append(f\"Vault: {data['vault_path']}\")
-
-level = data['activation_level']
-level_names = {1: 'L1 — Passive', 2: 'L2 — Vault-Aware', 3: 'L3 — Full Project'}
-lines.append(f\"Level: {level_names.get(level, 'L1 — Passive')}\")
-
-p = data.get('project')
-if level == 3 and p:
-    lines.append(f\"Project: {p.get('name', p['id'])}\")
-    if p.get('stage'):
-        lines.append(f\"Stage: {p['stage']}\")
-    if p.get('blockers'):
-        lines.append(f\"Blockers: {'; '.join(p['blockers'])}\")
-    if p.get('open_questions'):
-        lines.append(f\"Open questions: {len(p['open_questions'])}\")
-    if p.get('recent_decisions'):
-        lines.append(f\"Recent decisions: {'; '.join(p['recent_decisions'][-3:])}\")
-elif data.get('active_projects'):
-    lines.append(f\"Active projects: {data['active_projects']}\")
-
-lines.append('')
-lines.append('<cortex-personality>')
-lines.append((data.get('personality') or '').rstrip())
-lines.append('</cortex-personality>')
-
-lines.append('')
-lines.append('<cortex-memory>')
-lines.append((data.get('memory') or '').rstrip())
-lines.append('</cortex-memory>')
-
-lp = data.get('learner_profile') or ''
-if lp.strip():
-    lines.append('')
-    lines.append('<cortex-learner-profile>')
-    lines.append(lp.rstrip())
-    lines.append('</cortex-learner-profile>')
-
-if data.get('recent_activity'):
-    lines.append('')
-    lines.append('Recent activity:')
-    lines.append(data['recent_activity'])
-
-lines.append(f\"Inbox: {data.get('inbox_count', 0)} unsorted item(s)\")
-
-if data.get('feature_suggestion'):
-    lines.append(f\"Feature suggestion: {data['feature_suggestion']}\")
-
-b = data.get('_budget')
-if b and b.get('truncated'):
-    lines.append(f\"Context budget: {len(b['truncated'])} field(s) trimmed ({', '.join(b['truncated'])}) — ask 'read hub' or 'search vault' for full detail.\")
-
-lines.append('</cortex-session>')
-print('\n'.join(lines))
-" <<< "$BOOT_JSON")"
-
-# ── Escape and output ───────────────────────────────────────────────────────
-
-escape_for_json() {
-    local s="$1"
-    s="${s//\\/\\\\}"
-    s="${s//\"/\\\"}"
-    s="${s//$'\n'/\\n}"
-    s="${s//$'\r'/\\r}"
-    s="${s//$'\t'/\\t}"
-    printf '%s' "$s"
-}
-
-ESCAPED="$(escape_for_json "$SESSION_BLOCK")"
-
-if [[ -n "${CURSOR_PLUGIN_ROOT:-}" ]]; then
-    printf '{"additional_context":"%s"}\n' "$ESCAPED"
-elif [[ -n "${CLAUDE_PLUGIN_ROOT:-}" && -z "${COPILOT_CLI:-}" ]]; then
-    printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"%s"}}\n' "$ESCAPED"
-else
-    printf '{"additionalContext":"%s"}\n' "$ESCAPED"
-fi
+python3 "$PLUGIN_ROOT/hooks/lib/render-session.py" "$PLUGIN_ROOT" <<< "$BOOT_JSON" || exit 0

@@ -1,41 +1,18 @@
-# Cortex repo bridge — architecture reference
+# Repo bridge architecture
 
-Cortex bridges two execution contexts (Claude Desktop in the vault, Claude Code CLI in a code repo) so both see the same project context.
+The bridge lets a Claude Code session in a code repo and a session in the vault see the same project context.
 
-## Three files, three jobs
-
-| File | Lives at | Job |
+| File | Path | Role |
 |---|---|---|
-| Global config | `~/.claude/cortex/config.json` | Tells Cortex where the vault is. Tiny. Updated only if vault moves. |
-| Registry | `<vault>/.claude/cortex/registry.json` | Maps repo paths → vault projects. Lives in the vault so it's the source of truth and version-controlled with everything else. |
-| Repo stub | `<repo>/CLAUDE.md` | Static stub. Says "invoke Cortex". Contains zero vault knowledge. |
+| Global config | `~/.claude/cortex/config.json` | Where the vault is. Changes only if the vault moves. |
+| Registry | `<vault>/.claude/cortex/registry.json` | Repo paths mapped to projects. Kept in the vault so it's versioned with everything else, and it's the source of truth. |
+| Repo stub | `<repo>/CLAUDE.md` | Marks the repo as Cortex-managed. Holds no vault content. |
 
-## Lookup chain
+Lookup: config → registry → the project's `<Project> — Project Context.md`. The session-start hook does this walk on every session start.
 
-```
-~/.claude/cortex/config.json     ← "vault is HERE"
-        │
-        ▼
-<vault>/.claude/cortex/registry.json     ← "repo X = project Y"
-        │
-        ▼
-Work/.../Project Context.md     ← actual content
-```
+Why it's built this way:
+- Repos know nothing about the vault, so restructuring the vault never touches a repo; only registry entries change.
+- Walking up from the cwd works from any subfolder, the way git finds `.git`.
+- A stale entry produces a visible prompt, not a silent null.
 
-## Why this design
-
-- Repos stay vault-agnostic. Vault restructures don't touch any repo file.
-- Vault is the single source of truth. Repo stubs are not duplicates.
-- Walk-up matching mirrors `git`/`package.json` resolution — works from any subdirectory.
-- Failures are loud (missing entries trigger prompts), not silent (stale paths returning null).
-
-## Related workflows
-
-- `workflows/resolve-cwd.md` — walk-up matching
-- `workflows/register-repo.md` — register one repo
-- `workflows/backfill-repos.md` — register many at once
-
-## Spec
-
-Full design spec lives in the vault at:
-`Work/Personal/Ben Hungerford/Claude Cortex/Product Development/specs/2026-04-07-cortex-repo-bridge-design.md`
+Workflows: `workflows/resolve-cwd.md`, `workflows/register-repo.md`, `workflows/backfill-repos.md`. Design spec: `docs/` in the plugin repo (repo bridge design, 2026-04-07).
