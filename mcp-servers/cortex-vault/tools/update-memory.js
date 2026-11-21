@@ -15,14 +15,14 @@
 //     it already exists rather than duplicated.
 //   - An eviction/compaction notice once memory.md grows past a soft line cap
 //     (~80 lines), so old facts are never silently dropped without a signal.
-//     (Compaction itself is /cortex-compact-memory; this only warns.)
+//     (There is no compaction command; this only warns.)
 
 const path = require('node:path');
 const { getVaultPath } = require('../lib/vault-path.js');
 const { readFile, writeFile } = require('../lib/file-ops.js');
 
 // Soft cap on memory.md size. Past this we surface a one-line eviction notice
-// nudging the user toward /cortex-compact-memory. We do NOT auto-truncate here —
+// nudging the user to move old facts out. We do NOT auto-truncate here —
 // silent drops are exactly the failure mode T13 flagged.
 const SOFT_LINE_CAP = 80;
 
@@ -98,7 +98,7 @@ async function handler(args, vaultOverride) {
   const lineCount = updated.split('\n').filter((l) => l.length > 0).length;
   let text = `Saved to memory.md: ${fact}`;
   if (lineCount > SOFT_LINE_CAP) {
-    text += ` — Note: memory.md now has ${lineCount} lines (soft cap ${SOFT_LINE_CAP}); run /cortex-compact-memory to evict stale facts before they crowd boot context.`;
+    text += ` — Note: memory.md now has ${lineCount} lines (soft cap ${SOFT_LINE_CAP}); consider moving old facts into project or Knowledge Base notes.`;
   }
 
   return {

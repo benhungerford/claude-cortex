@@ -182,7 +182,7 @@ class TestNearbyWarning(unittest.TestCase):
             f.write("<!-- cortex-stub -->\nManaged by Claude Cortex.\n")
         warn = bc.detect_nearby_cortex(d)
         self.assertIsNotNone(warn)
-        self.assertIn("L1", warn)
+        self.assertIn("/cortex-register-repo", warn)
 
     def test_no_warning_when_nothing_nearby(self):
         d = os.path.join(self.tmp, "plain")

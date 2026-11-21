@@ -1,55 +1,19 @@
-# Backfill: scan for existing repos and register them
+# Backfill repos
 
-**When to use:** One-time, after the user upgrades to bridge-aware Cortex. Also runnable on demand if the user adds new repos in bulk.
+Bulk-register existing repos, usually once after installing Cortex or after adding several repos.
 
-## Procedure
+1. **Ask for scan roots.** Offer `~/Documents/Freelance Projects/` as the default and accept a comma-separated list. Check each path exists; if one doesn't, ask again rather than falling back.
+2. **List each root one level deep** and sort the subfolders:
+   - Strong: has a `CLAUDE.md`.
+   - Possible: the folder name fuzzy-matches a project from `list_projects` (or from the bucket folders named in `personality.md`), ignoring case, punctuation, and spaces.
+   - No match: leave out of the list unless the user wants to name a project for it.
+3. **Confirm in one pass,** 10 at a time:
 
-**Step 1: Ask for scan roots**
+   ```text
+   ~/Documents/Freelance Projects/jumpstart-wp  → Jumpstart SC / WordPress Website Build  [Y/n/skip]
+   ~/Documents/Freelance Projects/sandbox       → no clear match — type a project name or skip
+   ```
 
-Prompt:
-
-> I can scan a folder for existing project repos and register them. Where should I look?
-> Default: `~/Documents/Freelance Projects/`
-> You can supply multiple paths separated by commas.
-
-Wait for the user's response. If they accept the default, use it. Parse comma-separated paths and validate each one exists.
-
-**Step 2: Walk each root one level deep**
-
-For each scan root, list its immediate subdirectories. For each subdirectory, classify it:
-
-- **Strong match:** Contains a `CLAUDE.md` file. This is almost certainly a project repo.
-- **Possible match:** Folder name fuzzy-matches a vault project name (case-insensitive, ignore punctuation/spaces). Check vault project names by listing `Work/*/*/` and `Work/Personal/Ben Hungerford/*/*/` directories.
-- **No match:** Skip silently from the confirmation list.
-
-**Step 3: Build the confirmation list**
-
-For each strong/possible match, propose a registration:
-
-```
-Found possible repos. Confirm matches:
-
-  ~/Documents/Freelance Projects/Jumpstart SC      → Jumpstart SC / WordPress Website Build  [Y/n/skip]
-  ~/Documents/Freelance Projects/FOND              → FOND / Ongoing Store Development        [Y/n/skip]
-  ~/Documents/Freelance Projects/random-folder     → no clear match — type a project name or [skip]
-  ...
-```
-
-Ask the user to confirm in one pass. Accept `Y` (default), `n`/`skip`, or a typed project name override.
-
-**Step 4: For each confirmed match, run register-repo**
-
-Call `workflows/register-repo.md` once per confirmation, passing the resolved `project_id`, `vault_path`, `context_file`, and `repo_path`.
-
-**Step 5: Summary**
-
-When done, summarize:
-
-```
-Backfill complete.
-  Registered: 7 repos
-  Skipped: 2
-  Conflicts: 0
-```
-
-If any conflicts occurred (e.g. existing CLAUDE.md the user declined to replace), list them so the user can decide later.
+   Accept Y (default), n/skip, or a typed project name. If several projects match one folder, list them and let the user pick.
+4. **Register** each confirmed folder with `workflows/register-repo.md`.
+5. **Summarize:** registered, skipped, and conflicts (for example an existing `CLAUDE.md` the user kept), so the user can come back to the conflicts later.

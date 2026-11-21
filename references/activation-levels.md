@@ -1,96 +1,46 @@
-# Activation Levels — L1 / L2 / L3
+# Activation levels: L1 / L2 / L3
 
-Cortex modulates behavior based on session context. There are three levels. Each level defines how aggressively Cortex reads from, writes to, and surfaces information from the vault.
+How much Cortex reads, writes, and volunteers depends on where the session is. The session-start hook works out the level (`hooks/lib/boot-context.py` walks up from the cwd and matches the registry) and states it in the session context block as `Level: L1 — Passive`, `L2 — Vault-Aware`, or `L3 — Full Project`. On a surface without hooks, `get_boot_context` returns the same block. Skills read the level from there; they don't compute it. This file is the detail behind that line.
 
-Loaded by `cortex-boot` at session start and referenced by every skill that needs to know how proactive to be.
+## L1 — Passive
 
----
+**When:** the cwd is outside the vault and every registered repo, and no project has come up.
 
-## Level 1 — Passive
+- `personality.md` and `memory.md` context is loaded; nothing else is read.
+- Watch for capture signals (`capture-rules.md`) and handle them by its two-question test, but don't write to the vault without clear intent from the user.
+- No status updates or "here's what's in your vault" messages.
 
-**When:** Default. Active when cwd is outside the vault AND outside any registered repo, AND the user has not mentioned a project by name.
+Example: in `~/Documents/scratch/` the user asks about a regex. Answer it. If they then mention the FKT checkout, move to L2.
 
-**Behavior:**
-- Memory (`personality.md`, `memory.md`) is loaded silently at session start
-- Cortex watches the conversation for Tier 1 and Tier 2 capture signals (see `capture-rules.md`)
-- No proactive status surfaces, no "here's what's happening in your vault" messages
-- If a capture opportunity appears, Cortex handles it according to the two-question heuristic
-- Cortex never writes to the vault without clear user intent at this level
+## L2 — Vault-Aware
 
-**Example:** User opens a Claude Code session in `~/Documents/random-scratch/` and asks Cortex to explain a Python regex. Cortex answers the question. No vault activity. If mid-conversation the user says "I'm trying to debug the FKT checkout flow", Cortex escalates to Level 2.
+**When:** the cwd is inside the vault, the user names a project from `personality.md`, or they mention a vault concept ("what's in my inbox", "the Jumpstart changelog").
 
----
+- Read a project's hub the first time it comes up; read the tail of `_changelog.txt` when asked what happened recently.
+- Apply Tier 1 and Tier 2 capture rules as things happen. Tier 1 captures write without asking.
+- Offer one-line status facts when they're relevant: "That project has an open blocker on the API credentials. Want the details?"
 
-## Level 2 — Vault-Aware
+## L3 — Full Project
 
-**When:** cwd is inside the vault directory, OR the user mentions a project name that matches a bucket in `personality.md`, OR the user explicitly references a vault concept ("what's in my inbox", "the Jumpstart changelog", etc.).
+**When:** the cwd resolves to a registered repo, or the user focuses the session on a project ("let's work on FKT for the next hour").
 
-**Behavior:**
-- Everything from Level 1, plus:
-- Reads the relevant project's context hub on the first turn that references it
-- Checks the tail of `_changelog.txt` for recent activity if the user asks "what happened recently" or similar
-- Actively applies Tier 1 / Tier 2 capture rules — any decision, blocker, or meeting outcome captured without waiting
-- Surfaces one-line status facts when relevant ("That project has an open blocker on the API credentials — want me to pull the details?")
-- Vault writes are allowed freely for Tier 1 captures
+- Read the hub on each turn that depends on it, because decisions change during the session.
+- Raise blockers at the start and whenever the work touches them.
+- Ask whether new work belongs to the project when it looks like scope creep: "Is this part of <Project> or a new scope item?"
+- Keep clarifying questions to 2-3, about scope and dependencies.
+- Writes from a repo session need the user's intent. Explicit phrases ("log that", "we decided", "new blocker") write as Tier 1. An inferred capture gets a one-line confirm first, such as `Log that the wholesale portal moved out of scope for FKT? (y)`, because someone heads-down in a repo is more likely producing debugging chatter than decisions. At L1 and L2, inferred Tier 1 captures still write without the confirm.
+- In the first L3 reply of a session, add once: `(say 'log that' to capture decisions)`.
 
-**Example:** User says "quick question about FKT — is the Stripe integration in scope for launch?" Cortex reads the FKT hub, answers from the stage tracker + open questions table, cites the file it pulled from.
+Example opener in `~/Documents/Freelance Projects/fkt-checkout/`: "FKT — Shopify Website Build. Stage: Integrations. 2 open blockers: Stripe credentials, sandbox access."
 
----
+## Moving between levels
 
-## Level 3 — Full Project
-
-**When:** cwd resolves to a registered repo via `workflows/resolve-cwd.md`, OR the user explicitly focuses on a specific project for the session ("let's work on FKT for the next hour").
-
-**Behavior:**
-- Everything from Level 2, plus:
-- Reads the project hub on every turn (not cached — the user is actively making decisions and we don't want stale state)
-- Surfaces blockers proactively at the start of the session and whenever the conversation drifts into affected areas
-- Flags scope creep automatically — if the user starts discussing work that isn't in the current project scope, Cortex asks "is this part of <Project> or is it a new scope item?"
-- Limits clarifying questions to 2-3 at a time, focused on scope and dependency readiness
-- **Default: read-only against the vault.** Explicit user confirmation is required before writing from a repo-context session. Rationale: inside a repo, the user is writing code and we don't want Cortex accidentally filing debugging chatter into the vault.
-- Exception to read-only: when the user uses an explicit trigger phrase ("log this", "we decided", etc.) — those override the read-only default.
-
-**The L3 Inferred-Capture Rule.** Reconciles the L3 read-only default with the Tier 1 "always capture silently" rule (`capture-rules.md`):
-- **Explicit triggers proceed as Tier 1 and write.** When the user uses a trigger phrase ("log that", "we decided", "new blocker"), the captured intent is unambiguous — write it silently with the one-line confirmation, exactly as Tier 1 specifies.
-- **Inferred Tier 1 signals confirm before writing.** When Cortex *infers* a Tier 1 signal at L3 — a decision, scope change, or blocker it picked up ambiently without the user asking to log it — it does **not** write silently. It surfaces a one-line confirm first: `Log that wholesale portal moved out of scope to FKT? (y)`. Write only on confirmation. Rationale: at L3 the user is heads-down in a repo, and an inferred write they didn't ask for is more likely to be debugging chatter than a real decision.
-
-(At L1/L2, inferred Tier 1 signals still capture silently per `capture-rules.md` — this confirm step is L3-only.)
-
-On the first L3 session opener, append a one-time hint so the user knows the explicit path: `(say 'log that' to capture decisions)`.
-
-**Example:** User opens a Claude Code session in `~/Documents/Freelance Projects/fkt-checkout/`. `cortex-boot` walks cwd up, matches the repo to the FKT project in the registry, reads the hub, and opens the session with: "FKT — Shopify Website Build. Current stage: Integrations. 2 open blockers: Stripe credentials, sandbox access. Anything I can help with?"
-
----
-
-## Escalation rules
-
-Levels escalate automatically. A session can start at L1 and end at L3. They also de-escalate if context drifts.
-
-| Trigger | Transition |
+| Event | Change |
 |---|---|
-| Session start, cwd outside vault, no project name yet | L1 |
-| User mentions a known project name | L1 → L2 |
-| cwd is inside vault | L1/L2 → L2 |
-| cwd matches a registered repo | any → L3 |
-| User says "let's work on <Project>" | any → L3 |
-| User changes subject to unrelated chat for 3+ turns | L3 → L2 |
-| User explicitly says "step back" or "let's park this" | L3 → L2 |
-| User leaves vault context for 5+ turns of unrelated chat | L2 → L1 |
+| User names a known project | L1 → L2 |
+| cwd is inside the vault | → L2 |
+| cwd matches a registered repo, or "let's work on <Project>" | → L3 |
+| 3+ turns on something unrelated, or "step back" / "let's park this" | L3 → L2 |
+| 5+ turns away from the vault | L2 → L1 |
 
-**Never silently demote.** If Cortex is at L3 and drops to L2, note it briefly: `(stepping out of <Project> focus)`. The user should know when Cortex stops watching a specific project.
-
-**Never escalate past user intent.** If the user is clearly at L1 — asking how-to questions that have nothing to do with their vault — do not escalate to L2 just because a project name happens to appear in the answer.
-
----
-
-## Runtime detection
-
-The `session-start` hook computes the activation level at boot and includes it in the `<cortex-session>` block as the `Level:` line:
-
-- `Level: L1 — Passive`
-- `Level: L2 — Vault-Aware`
-- `Level: L3 — Full Project`
-
-For L3 sessions, the hook also includes the matched project name, current stage, open blockers, open questions, and recent decisions.
-
-The Python module `hooks/lib/boot-context.py` performs the actual resolution: reading `registry.json`, walking up from cwd, and matching against registered `repo_paths`. `cortex-boot` reads the pre-computed level from the session block — it never computes the level itself.
+Say so when stepping down from L3: `(stepping out of <Project> focus)`. Don't step up just because a project name appears in your own answer to an unrelated question.

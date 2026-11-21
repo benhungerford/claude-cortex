@@ -114,15 +114,62 @@ describe('get_boot_context', () => {
   });
 
   test('returns error (onboarding needed) when personality.md is missing', async () => {
-    // A valid vault dir with no personality.md => boot-context.py exits 1;
-    // this tool returns an isError result so cortex-boot falls back to onboarding.
+    // A valid vault dir with no personality.md => boot-context.py exits 3;
+    // this tool returns an isError result so Claude hands off to onboarding.
     const emptyVault = fs.mkdtempSync(path.join(os.tmpdir(), 'cortex-empty-'));
     try {
       const result = await tool.handler({ cwd: emptyVault }, emptyVault);
       assert.equal(result.isError, true);
       assert.match(result.content[0].text, /personality/i);
+      assert.equal(JSON.parse(result.content[0].text).error, 'not_set_up');
     } finally {
       rmTmpDir(emptyVault);
+    }
+  });
+
+  test('missing config.json is not_set_up', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cortex-cfg-'));
+    try {
+      const result = await tool.handler({ config_path: path.join(dir, 'config.json') });
+      assert.equal(result.isError, true);
+      const err = JSON.parse(result.content[0].text);
+      assert.equal(err.error, 'not_set_up');
+      assert.match(err.message, /cortex-onboard/);
+    } finally {
+      rmTmpDir(dir);
+    }
+  });
+
+  test('unmounted vault is unreadable, not an onboarding case', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cortex-cfg-'));
+    try {
+      const cfg = path.join(dir, 'config.json');
+      const gone = path.join(dir, 'unmounted-vault');
+      fs.writeFileSync(cfg, JSON.stringify({ vault_path: gone }));
+      const result = await tool.handler({ config_path: cfg });
+      assert.equal(result.isError, true);
+      const err = JSON.parse(result.content[0].text);
+      assert.equal(err.error, 'unreadable');
+      assert.equal(err.vault_path, gone);
+      assert.match(err.message, /don't offer onboarding/);
+    } finally {
+      rmTmpDir(dir);
+    }
+  });
+
+  test('unparseable config and empty personality.md are unreadable', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cortex-cfg-'));
+    try {
+      const cfg = path.join(dir, 'config.json');
+      fs.writeFileSync(cfg, '{"vault_path": "/x"');
+      let err = JSON.parse((await tool.handler({ config_path: cfg })).content[0].text);
+      assert.equal(err.error, 'unreadable');
+
+      fs.writeFileSync(path.join(tmpVault, 'personality.md'), '');
+      err = JSON.parse((await tool.handler({}, tmpVault)).content[0].text);
+      assert.equal(err.error, 'unreadable');
+    } finally {
+      rmTmpDir(dir);
     }
   });
 });

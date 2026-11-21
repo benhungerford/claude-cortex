@@ -52,7 +52,7 @@ class TestSkeleton(unittest.TestCase):
         self.assertIn("never pause", low)
 
     def test_dedup_guard_matches_on_id_not_filename(self):
-        self.assertIn("MATCH ON THE ID", self.text)
+        self.assertIn("match on the id", self.text.lower())
         self.assertIn("_pipeline_state.json", self.text)
 
     def test_autonomy_rules_present(self):

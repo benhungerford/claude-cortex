@@ -6,7 +6,14 @@ and outputs structured JSON to stdout. Called by hooks/session-start.
 
 Exit codes:
   0 — success, JSON on stdout
-  1 — no config, no vault, or no personality (onboarding needed)
+  3 — not set up: config.json is absent, or the vault is readable and has no
+      personality.md. session-start offers onboarding.
+  4 — set up but unreadable: config.json will not parse or has no vault_path,
+      the vault dir is missing or unreadable (unmounted drive, iCloud, macOS
+      permission), or personality.md can't be read. A one-line JSON
+      {"error", "vault_path", "reason"} goes to stdout; session-start says the
+      vault could not be read and does not offer onboarding.
+  Any other non-zero exit is a crash; session-start stays silent.
 """
 
 import argparse
@@ -28,6 +35,53 @@ def read_config(config_path):
     if not vault_path or not os.path.isdir(vault_path):
         return None
     return vault_path
+
+
+NOT_SET_UP = 3
+UNREADABLE = 4
+
+
+def check_setup(config_path):
+    """Decide whether boot can go on. Returns (vault_path, personality, None)
+    on success, or (vault_path_or_None, None, (exit_code, reason)).
+
+    Only a missing config.json or a readable vault with no personality.md
+    counts as "not set up". Everything else that goes wrong is "unreadable",
+    so an existing user is never offered onboarding (which would build a new
+    vault and rewrite config.json) because a drive is unmounted or a file was
+    caught mid-write.
+    """
+    if not os.path.exists(config_path):
+        return None, None, (NOT_SET_UP, "no config.json")
+    try:
+        with open(config_path, encoding="utf-8") as f:
+            config = json.load(f)
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError) as e:
+        return None, None, (UNREADABLE, f"config.json could not be read ({type(e).__name__})")
+    vault_path = config.get("vault_path") if isinstance(config, dict) else None
+    if not vault_path or not isinstance(vault_path, str):
+        return None, None, (UNREADABLE, "config.json has no vault_path")
+    if not os.path.isdir(vault_path):
+        return vault_path, None, (UNREADABLE, "vault folder not found (drive unmounted or moved?)")
+    try:
+        os.listdir(vault_path)
+    except OSError as e:
+        return vault_path, None, (UNREADABLE, f"vault folder not readable ({type(e).__name__})")
+    path = os.path.join(vault_path, "personality.md")
+    if not os.path.lexists(path):
+        return vault_path, None, (NOT_SET_UP, "no personality.md")
+    if not os.path.isfile(path):
+        return vault_path, None, (UNREADABLE, "personality.md is not a regular file")
+    try:
+        with open(path, encoding="utf-8") as f:
+            personality = f.read()
+    except (OSError, UnicodeDecodeError) as e:
+        return vault_path, None, (UNREADABLE, f"personality.md could not be read ({type(e).__name__})")
+    if not personality.strip():
+        # An empty file is more likely a sync placeholder or a bad write than
+        # a fresh install, so don't send the user to onboarding.
+        return vault_path, None, (UNREADABLE, "personality.md is empty")
+    return vault_path, personality, None
 
 
 def read_config_budget(config_path):
@@ -82,6 +136,111 @@ def read_memory(vault_path, cap=100):
     if len(lines) > cap:
         lines = lines[-cap:]
     return "".join(lines)
+
+
+def summarize_memory(vault_path, cap=100):
+    """Summarize memory.md for the session block.
+
+    A sectioned memory.md (has `## ` headings) becomes a table of contents with
+    line ranges, so Claude can Read just the section a task needs. The tail of a
+    long, sectioned memory file is usually an old session log, not the facts
+    that matter. A memory.md with no `## ` headings falls back to the tail-capped
+    text (read_memory).
+    """
+    path = os.path.join(vault_path, "memory.md")
+    if not os.path.isfile(path):
+        return ""
+    try:
+        with open(path, encoding="utf-8") as f:
+            lines = f.read().split("\n")
+    except (OSError, UnicodeDecodeError):
+        return ""
+    if lines and lines[-1] == "":
+        lines.pop()
+    heads = [(i + 1, l[3:].strip()) for i, l in enumerate(lines) if l.startswith("## ")]
+    if not heads:
+        return read_memory(vault_path, cap)
+    total = len(lines)
+    rows = []
+    for n, (start, title) in enumerate(heads):
+        end = heads[n + 1][0] - 1 if n + 1 < len(heads) else total
+        subs = sum(1 for l in lines[start:end] if l.startswith("### "))
+        extra = f", {subs} entries" if subs else ""
+        rows.append(f"- {title[:80]} (lines {start}-{end}{extra})")
+    return f"memory.md has {total} lines. Sections:\n" + "\n".join(rows)
+
+
+def _frontmatter(content):
+    m = re.search(r'^---\s*\n(.*?)\n---', content or "", re.DOTALL)
+    return m.group(1) if m else ""
+
+
+def _top_block(fm, key):
+    """Lines under a top-level YAML key, up to the next top-level key."""
+    out, inside = [], False
+    for line in fm.split("\n"):
+        if re.match(rf'^{re.escape(key)}:\s*$', line):
+            inside = True
+            continue
+        if inside:
+            if line and not line[0].isspace():
+                break
+            out.append(line)
+    return out
+
+
+def _scalar(lines, key):
+    for line in lines:
+        m = re.match(rf'^\s*{re.escape(key)}:\s*"?(.*?)"?\s*$', line)
+        if m and m.group(1):
+            return m.group(1)
+    return ""
+
+
+def summarize_personality(content):
+    """Short summary of personality.md: who, vault layout, writing rules.
+
+    Skills that need the full file (buckets, sub_note_types, tools) read
+    personality.md themselves; the session block only carries what shapes
+    every reply.
+    """
+    fm = _frontmatter(content)
+    if not fm:
+        return (content or "").strip()[:600]
+    ident = _top_block(fm, "identity")
+    model = _top_block(fm, "mental_model")
+    parts = []
+    who = ", ".join(x for x in (_scalar(ident, "name"), _scalar(ident, "role")) if x)
+    org = _scalar(ident, "company")
+    if who:
+        parts.append(f"User: {who}" + (f" ({org})" if org else "") + ".")
+    industry = _scalar(ident, "industry")
+    if industry:
+        parts.append(f"Work: {industry}.")
+    terms = [t for t in (_scalar(model, "bucket_term"), _scalar(model, "project_term")) if t]
+    if terms:
+        parts.append(f"Vault terms: {' / '.join(terms)}.")
+    layout = _scalar(model, "hierarchy_pattern")
+    if layout:
+        parts.append(f"Layout: {layout}")
+    groups, group = {}, ""
+    for line in _top_block(fm, "communication_preferences"):
+        g = re.match(r'^  (\w+):\s*$', line)
+        if g:
+            group = g.group(1).replace("_", " ")
+            continue
+        r = re.match(r'^\s*-\s*rule:\s*"?(.*?)"?\s*$', line)
+        item = re.match(r'^\s*-\s*"?([^:"][^"]*?)"?\s*$', line)
+        text = r.group(1) if r else (item.group(1) if item else "")
+        if text:
+            groups.setdefault(group, []).append(text.rstrip("."))
+    if groups:
+        rendered = []
+        for name, items in groups.items():
+            body = "; ".join(items) + "."
+            rendered.append(body if name in ("", "general") else f"{name.capitalize()}: {body}")
+        parts.append(("Writing rules: " + " ".join(rendered))[:700])
+    return "\n".join(parts)
 
 
 def read_learner_profile(vault_path):
@@ -285,16 +444,18 @@ def detect_nearby_cortex(cwd):
                     head = f.read(600)
                 if "cortex" in head.lower():
                     return (
-                        "L1 computed, but a Cortex stub CLAUDE.md was found nearby "
-                        "— this repo may not be registered. Run /cortex-register-repo "
+                        "A Cortex stub CLAUDE.md is nearby, so this repo may not be registered. "
+                        "If the user asks about this repo, offer /cortex-register-repo "
                         "to link it for L3 context."
                     )
             except (OSError, UnicodeDecodeError):
                 pass
-        if os.path.isdir(os.path.join(candidate, ".claude", "cortex")):
+        # $HOME/.claude/cortex is the config dir every install has, not a
+        # vault marker, so the home directory is skipped for this check.
+        if candidate != home and os.path.isdir(os.path.join(candidate, ".claude", "cortex")):
             return (
-                "L1 computed, but a Cortex vault marker was found nearby. "
-                "Run /cortex-register-repo to link this repo for full context."
+                "A Cortex vault marker is nearby. If the user asks about this repo, "
+                "offer /cortex-register-repo to link it for full context."
             )
         parent = os.path.dirname(candidate)
         if candidate == home or parent == candidate:
@@ -302,6 +463,11 @@ def detect_nearby_cortex(cwd):
         candidate = parent
         depth += 1
     return None
+
+
+def cap_text(text, limit):
+    """Cut a single line to about `limit` chars, ending with an ellipsis."""
+    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
 
 
 def parse_hub(vault_path, project_entry):
@@ -319,9 +485,10 @@ def parse_hub(vault_path, project_entry):
         return None
 
     try:
-        with open(hub_path, encoding="utf-8") as f:
+        # errors="replace": a stray non-UTF-8 byte shouldn't hide the whole hub.
+        with open(hub_path, encoding="utf-8", errors="replace") as f:
             content = f.read()
-    except (OSError, UnicodeDecodeError):
+    except OSError:
         return None
 
     result = {
@@ -329,35 +496,44 @@ def parse_hub(vault_path, project_entry):
         "blockers": [],
         "open_questions": [],
         "recent_decisions": [],
+        # Which hub sections were found. render-session.py says "call
+        # read_hub" for a missing one instead of showing empty data.
+        "parsed": {"stage": False, "blockers": False},
     }
 
-    # Parse Stage Tracker table
+    # Parse Stage Tracker table. Headings may carry an emoji or prefix
+    # ("## 📦 Project Stage Tracker") and status cells may carry one too
+    # ("🟡 In Progress").
     stage_section = re.search(
-        r'## Stage Tracker\s*\n\|[^\n]*\n\|[-| ]+\n((?:\|[^\n]*\n)*)',
+        r'^## [^\n]*Stage Tracker[^\n]*\n\s*\|[^\n]*\n\|[-| ]+\n((?:\|[^\n]*\n?)*)',
         content,
+        re.MULTILINE,
     )
     if stage_section:
+        result["parsed"]["stage"] = True
         rows = stage_section.group(1).strip().split("\n")
         # First pass: look for "In Progress" or "Current"
         for row in rows:
             cells = [c.strip() for c in row.split("|")[1:-1]]
-            if len(cells) >= 2 and cells[1] in ("In Progress", "Current"):
-                result["stage"] = cells[0]
+            if len(cells) >= 2 and ("In Progress" in cells[1] or "Current" in cells[1]):
+                result["stage"] = cap_text(cells[0], 80)
                 break
         # Fallback: last row with non-empty, non-"Not Started" status
         if not result["stage"]:
             for row in reversed(rows):
                 cells = [c.strip() for c in row.split("|")[1:-1]]
-                if len(cells) >= 2 and cells[1] and cells[1] != "Not Started":
-                    result["stage"] = cells[0]
+                if len(cells) >= 2 and cells[1] and "Not Started" not in cells[1]:
+                    result["stage"] = cap_text(cells[0], 80)
                     break
 
-    # Parse Open Questions & Blockers table
+    # Parse Open Questions & Blockers table (heading may carry an emoji).
     oq_section = re.search(
-        r'## Open Questions & Blockers\s*\n\|[^\n]*\n\|[-| ]+\n((?:\|[^\n]*\n)*)',
+        r'^## [^\n]*Open Questions & Blockers\s*\n\|[^\n]*\n\|[-| ]+\n((?:\|[^\n]*\n)*)',
         content,
+        re.MULTILINE,
     )
     if oq_section:
+        result["parsed"]["blockers"] = True
         rows = oq_section.group(1).strip().split("\n")
         for row in rows:
             cells = [c.strip() for c in row.split("|")[1:-1]]
@@ -369,23 +545,130 @@ def parse_hub(vault_path, project_entry):
             if not question or status.lower() == "resolved":
                 continue
             if typ in ("Dependency", "Internal", "Unknown"):
-                result["blockers"].append(question)
+                result["blockers"].append(cap_text(question, 160))
             else:
-                result["open_questions"].append(question)
+                result["open_questions"].append(cap_text(question, 160))
 
-    # Recent decisions from project Changelog.md
+    # Hub-format list sections (.claude/rules/hub-format.md in Ben's vault):
+    #   ## Active Blockers
+    #   - **BLK-02** · opened 2026-04-10 · blocks: Launch · Awaiting credentials
+    #   ## Open Questions
+    #   - [ ] **OQ-13** · 2026-04-15 · Sage webhook auth model?
+    blk = _section_lines(content, "Active Blockers")
+    if blk is not None:
+        for line in blk:
+            m = re.match(r'^\s*-\s+\*\*(BLK-[\w-]+)\*\*(.*)$', line)
+            if not m:
+                continue
+            # Only a section with BLK ids counts as parsed; a table or loose
+            # bullets would otherwise read as "0 blockers".
+            result["parsed"]["blockers"] = True
+            if re.search(r'\*\*resolved|\bresolved \d{4}-\d{2}-\d{2}|^\s*~~',
+                         m.group(2), re.IGNORECASE):
+                continue
+            fields = [f.strip() for f in re.split(r'\s[·|]\s', m.group(2)) if f.strip()]
+            desc = [f for f in fields if not re.match(
+                r'^(opened|last-touched)\s|^(blocks|attributable-to):|^self-gate$', f, re.IGNORECASE)]
+            text = " · ".join(desc).strip(" ·") or m.group(1)
+            result["blockers"].append(cap_text(f"{m.group(1)}: {text}", 160))
+    oq = _section_lines(content, "Open Questions", exact=True)
+    if oq is not None:
+        for line in oq:
+            if re.match(r'^\s*-\s+\[ \]\s+', line):
+                result["open_questions"].append(cap_text(re.sub(r'^\s*-\s+\[ \]\s+', '', line), 160))
+
+    # Recent decisions from project Changelog.md, newest first.
     changelog_path = os.path.join(
         vault_path, project_entry["vault_path"], "Changelog.md"
     )
     if os.path.isfile(changelog_path):
         try:
-            with open(changelog_path, encoding="utf-8") as f:
-                lines = [l.strip() for l in f.readlines() if l.strip()]
-            result["recent_decisions"] = lines[-5:]
-        except (OSError, UnicodeDecodeError):
+            with open(changelog_path, encoding="utf-8", errors="replace") as f:
+                text = f.read()
+            result["recent_decisions"] = [
+                cap_text(l, 200) for l in recent_changelog_entries(text, 5)
+            ]
+        except OSError:
             pass
 
+    # Counts are taken here, before any budget trimming, and are what the
+    # block shows. The texts are trimmed or dropped to fit the budget.
+    result["blocker_count"] = len(result["blockers"])
+    result["open_question_count"] = len(result["open_questions"])
     return result
+
+
+def _section_lines(content, title, exact=False):
+    """Lines of the `## ` section whose heading contains `title` (or equals it
+    after stripping, with exact=True). None if there is no such section."""
+    lines = content.split("\n")
+    for i, line in enumerate(lines):
+        if not line.startswith("## "):
+            continue
+        # Drop a leading emoji or symbol ("## ❓ Open Questions").
+        head = re.sub(r'^[^\w]+', '', line[3:].strip())
+        hit = head.lower() == title.lower() if exact else title.lower() in head.lower()
+        if hit:
+            out = []
+            for l in lines[i + 1:]:
+                if l.startswith("## "):
+                    break
+                out.append(l)
+            return out
+    return None
+
+
+_DATE_FORMATS = ("%Y-%m-%d", "%b %d %Y", "%B %d %Y", "%b %d, %Y", "%B %d, %Y")
+
+
+def _parse_date(text):
+    from datetime import datetime
+    text = text.strip().strip("[]*")
+    for fmt in _DATE_FORMATS:
+        try:
+            return datetime.strptime(text, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def recent_changelog_entries(text, n):
+    """The newest `n` entries of a project Changelog.md, newest first.
+
+    Understands dated H2 sections with bullets (`## 2026-11-19 (dev work)`),
+    tables whose first cell is a date (`| May 18 2026 | ... |`), and
+    `[2026-04-01] ...` lines. Anything else falls back to the last `n`
+    non-empty lines, newest (last) first.
+    """
+    entries, current = [], None
+    for idx, raw in enumerate(text.split("\n")):
+        line = raw.strip()
+        h = re.match(r'^##\s+(\d{4}-\d{2}-\d{2})', line)
+        if h:
+            current = _parse_date(h.group(1))
+            continue
+        if line.startswith("## "):
+            current = None
+            continue
+        if line.startswith("|"):
+            cells = [c.strip() for c in line.strip("|").split("|")]
+            d = _parse_date(cells[0]) if cells else None
+            if d and len(cells) > 1:
+                entries.append((d, idx, f"{d.isoformat()}: {' — '.join(c for c in cells[1:] if c)}"))
+            continue
+        b = re.match(r'^\[(\d{4}-\d{2}-\d{2})\]\s*(.*)$', line)
+        if b and _parse_date(b.group(1)):
+            entries.append((_parse_date(b.group(1)), idx, f"{b.group(1)}: {b.group(2)}"))
+            continue
+        if current and re.match(r'^[-*]\s+', line):
+            bullet = re.sub(r'^[-*]\s+', '', line)
+            entries.append((current, idx, f"{current.isoformat()}: {bullet}"))
+    if entries:
+        # Newest date first; within a date keep file order.
+        entries.sort(key=lambda e: (-e[0].toordinal(), e[1]))
+        return [e[2] for e in entries[:n]]
+    lines = [l.strip() for l in text.split("\n") if l.strip()]
+    return list(reversed(lines[-n:]))
 
 
 def derive_project_name(project_entry):
@@ -409,10 +692,14 @@ def derive_project_name(project_entry):
 # are filled in priority order; what doesn't fit is replaced with a stub
 # Claude can re-fetch on demand via the read-side MCP tools.
 
-# Default ~2,000 tokens ≈ 8,000 characters. Skill content + tool defs
-# already consume ~10k tokens; this keeps boot under ~12k total before the
-# user's first message.
+# Default ~2,000 tokens ≈ 8,000 characters for the whole rendered block.
+# A config budget_chars of 0 still disables the gate (tests and debugging).
 DEFAULT_BUDGET_CHARS = 8000
+
+# Fixed text session-start adds around the fields (the behavior notes and
+# labels). Counted against the budget so the rendered block, not just the
+# JSON fields, stays under it. Keep roughly in step with hooks/lib/render-session.py.
+RENDER_OVERHEAD_CHARS = 1800
 
 
 def estimate_chars(value):
@@ -438,16 +725,32 @@ def truncate_text(text, max_chars):
     return keep + f"\n[…truncated for token budget — {len(text) - max_chars} chars omitted]"
 
 
+MAX_BLOCKERS_SHOWN = 5  # render-session.py shows at most this many texts
+
+
+def project_render_size(p):
+    """Chars render-session.py prints for the project: what is shown, not the
+    JSON (open-question texts are never shown, only their count)."""
+    if not p:
+        return 0
+    shown = (
+        [p.get("name") or "", p.get("vault_path") or "", p.get("stage") or ""]
+        + list(p.get("blockers") or [])[:MAX_BLOCKERS_SHOWN]
+        + list(p.get("recent_decisions") or [])[:3]
+    )
+    return sum(len(s) + 4 for s in shown) + 200  # labels and separators
+
+
 def apply_token_budget(output, budget_chars):
     """Greedy fill in priority order; truncate or stub anything that overflows.
 
     Mutates `output` in place. Priority (highest first):
       1. project (L3 hub data — most situational value)
-      2. personality (identity + sub-note types — drives skill behavior)
-      3. recent_activity (last 15 changelog lines)
-      4. memory (long-term facts)
-      5. learner_profile (coaching context, optional)
-      6. active_projects (L1/L2 bucket list, only when no project)
+      2. personality (summary: who, layout, writing rules)
+      3. memory (section index, or tail for an unsectioned file)
+      4. recent_activity (last 15 changelog lines)
+    active_projects is reserved and never truncated. learner_profile is not
+    rendered (session-start only points at its path), so it is not counted.
     """
     if budget_chars is None or budget_chars <= 0:
         return  # disabled
@@ -462,24 +765,24 @@ def apply_token_budget(output, budget_chars):
         + estimate_chars(output.get("inbox_count"))
         + estimate_chars(output.get("feature_suggestion"))
         + estimate_chars(output.get("active_projects"))
-        + 200  # JSON keys + delimiters
+        + estimate_chars(output.get("activation_warning"))
+        + RENDER_OVERHEAD_CHARS
     )
 
     remaining = budget_chars - fixed_overhead
     truncated_fields = []
 
     priority = [
-        ("project", lambda v: json.dumps(v) if v else ""),
+        ("project", project_render_size),
         ("personality", lambda v: v or ""),
-        ("recent_activity", lambda v: v or ""),
         ("memory", lambda v: v or ""),
-        ("learner_profile", lambda v: v or ""),
+        ("recent_activity", lambda v: v or ""),
     ]
 
     for key, render in priority:
         value = output.get(key)
         rendered = render(value)
-        size = len(rendered) if isinstance(rendered, str) else estimate_chars(rendered)
+        size = rendered if isinstance(rendered, int) else len(rendered)
         if size <= remaining:
             remaining -= size
             continue
@@ -497,7 +800,8 @@ def apply_token_budget(output, budget_chars):
             truncated_fields.append(key)
             remaining = 0
         elif isinstance(value, dict):
-            # Keep the highest-signal subset for project hub.
+            # Keep the highest-signal subset for project hub. The counts stay
+            # the real ones from parse_hub.
             if key == "project":
                 output[key] = {
                     "id": value.get("id"),
@@ -505,12 +809,18 @@ def apply_token_budget(output, budget_chars):
                     "vault_path": value.get("vault_path"),
                     "stage": value.get("stage"),
                     "blockers": value.get("blockers", [])[:3],
-                    "open_questions": value.get("open_questions", [])[:3],
-                    "recent_decisions": value.get("recent_decisions", [])[:3],
+                    "open_questions": [],
+                    "recent_decisions": value.get("recent_decisions", [])[:1],
+                    "blocker_count": value.get("blocker_count", len(value.get("blockers", []))),
+                    "open_question_count": value.get(
+                        "open_question_count", len(value.get("open_questions", []))),
+                    "parsed": value.get("parsed"),
                     "_truncated": True,
                 }
                 truncated_fields.append(key)
-            remaining = 0
+                remaining -= project_render_size(output[key])
+            else:
+                remaining = 0
         else:
             output[key] = None
             truncated_fields.append(key)
@@ -648,18 +958,17 @@ def main():
     )
     args = parser.parse_args()
 
-    # Read config
-    vault_path = read_config(args.config)
-    if not vault_path:
-        sys.exit(1)
-
-    # Read personality (required)
-    personality = read_personality(vault_path)
-    if not personality:
-        sys.exit(1)
+    # Config, vault and personality.md (required). See check_setup for how
+    # "not set up" (3) differs from "unreadable" (4).
+    vault_path, personality, failure = check_setup(args.config)
+    if failure:
+        code, reason = failure
+        json.dump({"error": "not_set_up" if code == NOT_SET_UP else "unreadable",
+                   "vault_path": vault_path, "reason": reason}, sys.stdout)
+        sys.exit(code)
 
     # Read optional files
-    memory = read_memory(vault_path, args.memory_cap)
+    memory = summarize_memory(vault_path, args.memory_cap)
     learner_profile = read_learner_profile(vault_path)
     recent_activity, changelog_total = read_changelog(vault_path)
     inbox_count = count_inbox(vault_path)
@@ -685,7 +994,8 @@ def main():
             "id": project_entry["id"],
             "name": derive_project_name(project_entry),
             "vault_path": project_entry["vault_path"],
-            **(hub_data or {"stage": None, "blockers": [], "open_questions": [], "recent_decisions": []}),
+            **(hub_data or {"stage": None, "blockers": [], "open_questions": [],
+                            "recent_decisions": [], "hub_missing": True}),
         }
     elif activation_level == 2 and project_entry:
         # L2 via default_project: surface the anchor's identity without the full
@@ -724,10 +1034,12 @@ def main():
             parts.append(f"Projects: {names_str}")
         active_projects = " | ".join(parts) if parts else (buckets or None)
 
+    # personality and memory are summaries (see summarize_*). The MCP
+    # get_boot_context tool still returns the full files.
     output = {
         "vault_path": vault_path,
         "activation_level": activation_level,
-        "personality": personality,
+        "personality": summarize_personality(personality),
         "memory": memory,
         "learner_profile": learner_profile,
         "recent_activity": recent_activity,
@@ -747,6 +1059,8 @@ def main():
 
     # Apply token budget last so it acts on final assembled state.
     apply_token_budget(output, budget_chars)
+    # render-session.py hard-caps the final hook output at this size.
+    output["budget_chars"] = budget_chars
 
     json.dump(output, sys.stdout)
 

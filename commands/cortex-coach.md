@@ -15,6 +15,4 @@ Invoke the `cortex-coach` skill.
 4. If `$ARGUMENTS` is `report`: run `workflows/coach-report.md` to generate a dated growth report.
 5. If `$ARGUMENTS` is a non-empty string (not `report`): treat it as a topic or question and run `workflows/coach.md` with that focus.
 
-**Failure modes:** delegate to `cortex-coach`'s failure modes table.
-
 **Related:** `skills/cortex-coach/SKILL.md`

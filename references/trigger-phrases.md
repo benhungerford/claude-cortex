@@ -1,89 +1,43 @@
-# Trigger Phrases — canonical router input
+# Trigger phrases
 
-Single source of truth for "what user input routes to what skill". This file eliminates fuzzy intent detection. Every trigger is either:
+Which input routes to which skill. The literal phrases live in two places that matter: each skill's `description` (what Claude's skill loader sees) and the patterns in `hooks/user-prompt-submit`, which add a `<cortex-hint>skill:<name></cortex-hint>` to the prompt. When they disagree, the hook's patterns are what actually fire. This file keeps what neither of those holds: the routing map, structural signals, and how to break ties.
 
-1. A **literal substring** that must appear in the user's message (case-insensitive, whole-word match preferred), or
-2. A **structural signal** about the session itself (cwd state, first message, file shared, etc.)
+## Routing map
 
-Used by:
-- Each skill's `description` YAML field (populated from this table to keep descriptions consistent and discoverable)
-- The Stage 3 `UserPromptSubmit` hook, which matches messages against this table and injects `<cortex-hint>skill:<name></cortex-hint>` into the session context
-- `tests/scenarios.md` — every test scenario picks its starting skill from this table
+| Input | Skill |
+|---|---|
+| No `~/.claude/cortex/config.json`, bad `vault_path`, or no `personality.md`; "first run", "set up my vault", "onboard me" | `cortex-onboarding` |
+| Status questions about a known project ("what's the status of", "where are we on", "what's blocking", "catch me up on"; plain-English and second-language forms such as "where we at") | `cortex-check-status` |
+| "log that", decisions ("we decided", "going with"), new blockers, resolved blockers ("that's resolved"; "we got the X" at medium confidence, so the skill confirms which blocker) | `cortex-update-context` |
+| "new project", "start tracking", a pasted brief with no matching project | `cortex-ingest-project` |
+| "process this meeting", a pasted transcript, a Granola/Fathom tool result | `cortex-process-meeting` |
+| "worth remembering", "add to knowledge base", "this is reusable" (bare "reusable" doesn't fire); an ambient vendor quirk or recipe, asked first | `cortex-knowledge` |
+| "register this repo", "scan for repos", "what project am I in", an orphaned stub | `cortex-register-repo` |
+| "I want Cortex to…", "add a skill that…", "create a custom skill" | `cortex-extend` |
+| "teach me", "coach me", "where can I improve", "skill check" | `cortex-coach` |
+| "set up my daily routine", "build my daily briefing", `/cortex-daily`, a yes to the `daily_briefing` offer | `cortex-daily` |
 
-Update this file first when adding a new skill or changing a trigger. Changes here drive changes to the SKILL.md descriptions.
+Session start needs no skill: the session-start hook injects the context block (level, active project, blockers) and the behavior that goes with it. On a surface without hooks, the `get_boot_context` MCP tool returns the same block.
 
----
+## Structural signals
 
-## Routing table
+- **Brief paste:** 5+ lines with at least one paragraph of prose about goals, deadlines, deliverables, or stakeholders. If unsure, ask "new project or an update to X?"
+- **Transcript paste:** 20+ lines where speaker-labeled lines are at least 25% of the total. Labels come as `Name:`, `First Last:`, Granola `**Name:**`, Fathom `[HH:MM] Name:`, or `- Name:`. A citation block (Author, Title, DOI, Year, Journal) is not a transcript. Timestamped pastes route at high confidence; untimestamped ones at medium, so the skill asks "file this as a meeting, or keep it as context?"
+- **Orphaned stub:** walking up from the cwd finds a `CLAUDE.md` whose first 20 lines say "Cortex-managed repo" or "invoke the Cortex skill", but no registry entry matches.
 
-| # | Trigger (literal or structural) | Routes to | Notes |
-|---|---|---|---|
-| 1 | Session start, `~/.claude/cortex/config.json` missing or `vault_path` invalid | `cortex-onboarding` | Hard route. First-run. |
-| 2 | Session start, `<vault_path>/personality.md` missing | `cortex-onboarding` | Partial onboarding — resume from where user left off. |
-| 3 | Literal: "first run", "just installed Cortex", "set up my vault", "onboard me" | `cortex-onboarding` | User-invoked onboarding even if vault exists. |
-| 4 | Session start, any runtime, vault present | `cortex-boot` | Always fires first turn to resolve cwd + load memory. |
-| 5 | Literal: "what's the status of <X>", "where are we on <X>", "what's left on <X>", "what's blocking <X>", "status of <X>", "any open questions on <X>", "is <X> on track", "catch me up on <X>", "what happened with <X>", "give me an update on <X>", "bring me up to speed on <X>", plus ESL forms ("what is the status", "where we at", "what is blocking", "what is left on") | `cortex-check-status` | X must fuzzy-match a known bucket in `personality.md`. ESL/colloquial phrasings (W3.5) routed at confidence:high. |
-| 6 | Literal: "log that", "log this", "log it", "add this to the project", "add that to <X>" | `cortex-update-context` | Explicit write trigger. |
-| 7 | Literal: "we decided", "decision:", "I'm going with", "going to go with", "final answer is", "we're using <X>" | `cortex-update-context` | Decision capture. |
-| 8 | Literal: "new blocker", "blocker:", "this is blocking", "blocked by", "can't proceed until" | `cortex-update-context` | New-blocker capture. |
-| 9 | Literal: "that's resolved", "blocker resolved", "unblocked" (confidence:high); "we got <X>", "we got the <X>" (confidence:medium — skill confirms which blocker cleared) | `cortex-update-context` | Blocker-resolved capture. Curly apostrophes (U+2019) are normalized to straight before matching, so "that's resolved" matches whether smart-quoted or not (W3.4). |
-| 10 | Literal: "new project", "start tracking", "I'm starting a new <project_term>", "scaffold a project for <X>" | `cortex-ingest-project` | |
-| 11 | Structural: user pastes a long block of text (5+ lines) that looks like a project brief (mentions goals, deadlines, deliverables, stakeholders) and no existing project matches | `cortex-ingest-project` | Heuristic — if uncertain, ask "is this a new project or an update to <X>?" |
-| 12 | Structural: user pastes a transcript — 20+ lines with speaker labels in any common form: `Name:`, multi-word `First Last:`, Granola `**Name:**`, Fathom `[HH:MM] Name:`, or bullet/dash `- Name:`. Speaker lines must be ≥25% of total lines (density), and the paste must not be a metadata/citation block (Author/Title/DOI/Year/Journal). | `cortex-process-meeting` | **Timestamped** (`[HH:MM]`) → confidence:high, hard route. **No temporal marker** → confidence:medium; the skill asks "file this as a meeting, or just keep as context?" rather than hard-filing. |
-| 13 | Literal: "process this meeting", "here are the notes from <X>", "meeting notes:", "from my call with <X>" | `cortex-process-meeting` | |
-| 14 | Structural: Granola / Fathom MCP tool returned a transcript in the current turn | `cortex-process-meeting` | Hard route. |
-| 15 | Literal: "worth remembering", "add to knowledge base", "file as a reference", "save this pattern", "for future projects", "this is reusable", "that's reusable", "reusable pattern", "reusable knowledge" | `cortex-knowledge` | Bare "reusable" alone no longer fires (over-matched "reusable component" mid-discussion); it now needs a phrase anchor (W3.2/W3.4). |
-| 16 | Structural: conversation reveals a vendor quirk, library gotcha, or recipe not specific to the current project | `cortex-knowledge` | Soft trigger — ask user "want me to extract this to Knowledge Base?" |
-| 17 | Literal: "register this repo", "link this folder", "link this repo to a project", "this repo is for <project>" | `cortex-register-repo` | |
-| 18 | Literal: "scan for repos", "backfill repos", "find my project folders", "register all my repos" | `cortex-register-repo` | Backfill operation. |
-| 19 | Structural: cwd outside vault, no registry match, `CLAUDE.md` with Cortex stub found walking up | `cortex-register-repo` | Orphaned stub — prompts "is this <closest-match>?" |
-| 20 | Literal: "what project am I in", "what repo is this", "which project is this cwd" | `cortex-register-repo` | Read-only lookup. |
-| 21 | Literal: "I want Cortex to...", "add a skill that...", "extend Cortex to...", "make Cortex do...", "create a custom skill", "build me a skill", "can Cortex learn to..." | `cortex-extend` | Hands off to skill-creation flow with Cortex compatibility rules. |
-| 22 | Literal: "teach me", "teach me about", "teach me how", "teach me why", "what should I be learning", "where can I improve", "coach me", "how could I do this better", "what am I missing", "review my approach", "skill check", "growth check" | `cortex-coach` | On-demand coaching. Reads vault state + Claude expertise to deliver tailored guidance. |
-| 23 | Literal: "set up my daily routine", "build my daily briefing", "create a daily pipeline", "/cortex-daily", "generate my morning routine" | `cortex-daily` | Generator: emits a copy-paste Claude Routine prompt for the unattended daily pipeline. |
+## When two triggers match
 
----
+1. Hard structural routes win (missing config, a Granola/Fathom transcript).
+2. Explicit phrases beat inferred signals: "log that the API is Stripe" goes to `cortex-update-context`, not `cortex-knowledge`.
+3. Writes beat reads: "log the status of FKT" is an update, not a status check.
+4. A decision and a blocker in one message both go to `cortex-update-context` in one pass.
 
-## Structural signal definitions
+With no match at L1, just answer the question.
 
-**Session start:** first user message of a new Claude session. Detected via absence of prior assistant messages in the current conversation. Every session start fires `cortex-boot` first.
+## Matching
 
-**Long text paste:** user message contains 5+ lines AND has at least one paragraph of prose. Different from a structured transcript (which has speaker labels).
+Case-insensitive, punctuation ignored, curly apostrophes treated as straight. Prefer whole phrases: "log" alone shouldn't fire (logger, login, catalog), "log that" should. Project names match fuzzily ("FKT", "Frankl and Thomas", "fkt shopify"). If a phrase almost matches, ask "Did you mean 'log that'?" at most once per conversation.
 
-**Transcript paste:** user message has 20+ lines AND speaker-labeled lines make up ≥25% of total lines. Speaker labels are matched in any common export form — bare `Name: text`, multi-word `First Last:`, Granola bold `**Name:**`, Fathom timestamped `[HH:MM] Name:`, and bullet/dash `- Name:`. A metadata/citation block (≥2 of Author/Title/DOI/Year/Journal/… with no timestamps) is explicitly excluded so bibliography and quote pastes do not misfire. A timestamped paste hard-routes at confidence:high; an untimestamped speaker-labeled paste routes at confidence:medium so the skill can confirm intent (file vs. context). A Granola/Fathom MCP tool returning a transcript in the same turn also counts.
+## Adding a skill
 
-**Orphaned stub:** walking up from cwd finds a `CLAUDE.md` whose first 20 lines contain the phrases "Cortex-managed repo" or "invoke the Cortex skill", but `resolve-cwd` returns no registry match.
-
----
-
-## Disambiguation rules (when two triggers fire)
-
-More than one trigger can match a single message. The routing hook picks in priority order:
-
-1. **Hard-route structural signals win** (onboarding missing config, transcript from Granola MCP, etc.)
-2. **Explicit trigger phrases beat inferred ones** ("log that the API is Stripe" → `cortex-update-context`, not `cortex-knowledge`)
-3. **Write-side beats read-side** ("log the status of FKT" → `cortex-update-context`, not `cortex-check-status`)
-4. **If two write-side triggers fire simultaneously** (e.g. a decision AND a blocker in one sentence), route to `cortex-update-context` and let it handle both captures in one pass.
-
-If no trigger matches and the user is at Level 1, Cortex answers the question directly without invoking any skill beyond `cortex-boot`.
-
----
-
-## Soft matching guidelines (for phrase triggers)
-
-- Case-insensitive.
-- Ignore surrounding punctuation.
-- Whole-word match preferred over substring — "log" alone should not trigger `cortex-update-context` (it matches "logger", "login", "catalog"). But "log that" or "log this" or "log it" should.
-- Project-name matching is fuzzy: "FKT", "Frankl and Thomas", "fkt shopify" all match the Frankl & Thomas bucket.
-- If a phrase *almost* matches (one word off), Cortex can ask: "Did you mean `log that`?" — but only once per conversation.
-
----
-
-## Adding a new skill
-
-When adding a new skill to the plugin:
-
-1. Add its triggers to this table with a new row number.
-2. Copy the trigger line verbatim into the new skill's `description` YAML field so Claude's skill-loader sees the same phrasing.
-3. Add at least one test scenario to `tests/scenarios.md` that exercises each new trigger.
-4. If the new trigger overlaps an existing one, update the Disambiguation rules section above.
+Add a row here, put the same phrases in the skill's `description`, add the patterns to `hooks/user-prompt-submit`, add a scenario to `tests/scenarios.md`, and update the tie-break rules if the new trigger overlaps an old one.

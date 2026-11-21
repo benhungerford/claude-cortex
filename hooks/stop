@@ -359,8 +359,19 @@ rm -f "$PENDING_FILE"
 
 EVICTION_NOTE=""
 if [[ -n "${MEMORY_LINES:-}" && "$MEMORY_LINES" -gt "$SOFT_LINE_CAP" ]]; then
-    EVICTION_NOTE=" memory.md now has $MEMORY_LINES lines (soft cap $SOFT_LINE_CAP); run /cortex-compact-memory to evict stale facts."
+    EVICTION_NOTE=" memory.md now has $MEMORY_LINES lines (soft cap $SOFT_LINE_CAP); consider moving old facts out."
 fi
+
+# One line the user sees (systemMessage), saying what was written. The
+# additionalContext below carries the full text for the model.
+VISIBLE_LINE="$(python3 -c "
+import sys
+n, body = sys.argv[1], ' / '.join(l.strip() for l in sys.argv[2].splitlines() if l.strip())
+if len(body) > 160:
+    body = body[:157].rstrip() + '...'
+print(f'Cortex saved {n} update(s) to memory.md' + (f': {body}' if body else '.'), end='')
+" "$FLUSH_RESULT" "$FLUSHED_CONTENT" 2>/dev/null || printf 'Cortex saved %s update(s) to memory.md.' "$FLUSH_RESULT")"
+VISIBLE_ESC="$(escape_for_json "$VISIBLE_LINE")"
 
 SUMMARY="Flushed $FLUSH_RESULT pending memory update(s) to vault memory.md.$EVICTION_NOTE"
 if [[ -n "$FLUSHED_CONTENT" ]]; then
@@ -378,7 +389,7 @@ if [[ -n "${CURSOR_PLUGIN_ROOT:-}" ]]; then
     printf '{"additional_context":"%s"}\n' "$ESCAPED"
 elif [[ -n "${CLAUDE_PLUGIN_ROOT:-}" && -z "${COPILOT_CLI:-}" ]]; then
     # Claude Code
-    printf '{"hookSpecificOutput":{"hookEventName":"Stop","additionalContext":"%s"}}\n' "$ESCAPED"
+    printf '{"systemMessage":"%s","hookSpecificOutput":{"hookEventName":"Stop","additionalContext":"%s"}}\n' "$VISIBLE_ESC" "$ESCAPED"
 else
     # Copilot CLI / default
     printf '{"additionalContext":"%s"}\n' "$ESCAPED"

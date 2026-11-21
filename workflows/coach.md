@@ -1,70 +1,23 @@
-<required_reading>
-**Read these reference files NOW:**
-1. personality.md (in vault root)
-2. Knowledge Base/Growth/_profile.md (learner profile — preferences, strengths, growth edges, calibration)
-3. Knowledge Base/Growth/_goals.md (active learning goals)
-4. references/vault-conventions.md (frontmatter, wikilinks)
-</required_reading>
+# Coach on demand
 
-<process>
+Procedure for `cortex-coach` when the user asks. If `Knowledge Base/Growth/_profile.md` doesn't exist, run `workflows/coach-intake.md` first.
 
-**When to trigger:** User invokes cortex-coach on-demand (trigger phrases from row 22 of trigger-phrases.md).
+1. **Read context:** `_profile.md`, `_goals.md`, the last 30 entries of `_signals.log`, and what the user is working on right now (project, domain, problem).
+2. **Size the gap.**
+   - Is the topic a known growth edge or an active goal?
+   - Knowledge gap (no Knowledge Base articles, no signals in the domain) or skill gap (several `TEACHING` or `STRUGGLE` entries)?
+   - What single concept would help most with the task in front of them?
+   - What does the Knowledge Base show they already know?
+3. **Teach** in the format `_profile.md` asks for:
+   - Walkthrough: step through the concept using their current work.
+   - Articles or docs: name the best resource and the key idea to look for.
+   - Code examples: a working example built on their files and data.
+   - Mixed: pick per topic, using any per-domain notes in the profile.
+4. **Log the signal** to `Knowledge Base/Growth/_signals.log`, silently:
 
-**Pre-check:** If `Knowledge Base/Growth/_profile.md` does not exist, run `workflows/coach-intake.md` first.
+   ```text
+   [YYYY-MM-DD HH:MM] TEACHING | domain:<domain> | topic:<topic> | depth:<significant|minor> | mode:on-demand
+   ```
 
-**Step 1: Read context**
-
-a. Read `Knowledge Base/Growth/_profile.md` — learning preferences, strengths, growth edges, calibration notes.
-b. Read `Knowledge Base/Growth/_goals.md` — active learning goals.
-c. Read `Knowledge Base/Growth/_signals.log` — recent teaching moments (last 30 entries). Look for domain clusters and recurring topics.
-d. Identify the current conversation context — what is the user working on right now? What project, what domain, what problem?
-
-**Step 2: Assess the gap**
-
-Using the data from Step 1, determine:
-
-a. **Is this a known growth edge?** Does the current topic align with something in `_profile.md` Growth Edges or `_goals.md` Active Goals?
-b. **Is this a knowledge gap or a skill gap?**
-   - Knowledge gap: the user has never encountered this concept. Signals: no KB articles on the topic, no signals in `_signals.log` for this domain.
-   - Skill gap: the user has encountered it but hasn't mastered it. Signals: multiple `TEACHING` or `STRUGGLE` entries for this domain in `_signals.log`.
-c. **What's the highest-leverage thing to teach?** Given what the user is trying to accomplish right now, what single concept or technique would have the most impact?
-d. **What does the user already know?** Check Knowledge Base for existing articles in this domain. Don't teach what's already internalized.
-
-**Step 3: Deliver guidance**
-
-Tailor the delivery to the user's learning preferences from `_profile.md`:
-
-- **Walkthroughs** → Teach inline. Walk through the concept step by step using the user's current work as the example. Offer to go deeper if they want.
-- **Articles/docs** → Point to specific external resources (documentation pages, tutorials). Summarize the key insight so they know what to look for. Use Claude's knowledge to recommend the most relevant resource.
-- **Code examples** → Build a concrete, working example grounded in the user's actual project. Not abstract — use their file names, their data structures, their problem.
-- **Mix / topic-dependent** → Choose the mode that fits this specific topic based on any per-domain preferences in `_profile.md`.
-
-Always connect guidance back to the user's actual project. Not abstract theory — practical application.
-
-Respect the calibration notes in `_profile.md`. If it says "prefers terse explanations", don't over-explain. If it says "lead with a recommendation", don't present 5 options.
-
-**Step 4: Persist learning signal**
-
-After delivering guidance, append an entry to `Knowledge Base/Growth/_signals.log`:
-
-```
-[{{YYYY-MM-DD HH:MM}}] {{SIGNAL_TYPE}} | domain:{{domain}} | topic:{{topic}} | depth:{{significant|minor}} | mode:on-demand
-```
-
-Signal types:
-- `TEACHING` — explained something the user didn't know
-- `GUIDANCE` — suggested a better approach to something the user was already doing
-
-This logging is silent — do not mention it to the user.
-
-**Step 5: Route reusable knowledge**
-
-Apply the reusability test from `cortex-knowledge`:
-
-> "Is this project-specific or would it help on a different project?"
-
-If reusable → invoke `cortex-knowledge` to file the guidance as a Knowledge Base article. One-line confirmation.
-
-If project-specific → no action needed. The guidance lives in the conversation and in `_signals.log`.
-
-</process>
+   `TEACHING` means you explained something new; `GUIDANCE` means you suggested a better way to do something they already do.
+5. **Route reusable knowledge.** If the guidance would help on other projects, hand it to `cortex-knowledge`.

@@ -269,6 +269,15 @@ else
     echo "    Got: $(echo "$ns_flush_out" | head -2)"
     FAIL=$((FAIL + 1))
 fi
+# 2.0.0 — the flush is visible to the user as one systemMessage line.
+visible=$(printf '%s' "$ns_flush_out" | python3 -c "import json,sys; print(json.load(sys.stdin).get('systemMessage',''))" 2>/dev/null || true)
+if [[ "$visible" == "Cortex saved 1 update(s) to memory.md: NSFlushFact alpha" ]]; then
+    echo "  PASS: stop shows a one-line systemMessage for the memory flush"
+    PASS=$((PASS + 1))
+else
+    echo "  FAIL: stop systemMessage missing or wrong: '$visible'"
+    FAIL=$((FAIL + 1))
+fi
 
 echo
 echo "boot-context.py:"
@@ -292,6 +301,42 @@ echo "$SAVED_CHANGELOG" > "$TEST_VAULT/_changelog.txt"
 SAVED_CONFIG="$TEST_CONFIG"
 TEST_CONFIG="/tmp/cortex-nonexistent-config-$$.json"
 run_boot_test "no config — non-zero exit" "" "EXIT_NONZERO"
+
+# 2.0.0 — with no config, session-start still emits a calm not-set-up block
+# (it is what starts onboarding on a first install), in the normal wrapper.
+nosetup_out=$(HOME="/tmp" CORTEX_BOOT_CONFIG="$TEST_CONFIG" bash "$REPO_ROOT/hooks/session-start" < /dev/null 2>/dev/null || echo "HOOK_ERROR")
+nosetup_ctx=$(printf '%s' "$nosetup_out" | python3 -c "import json,sys; print(json.load(sys.stdin)['hookSpecificOutput']['additionalContext'])" 2>/dev/null || true)
+if [[ "$nosetup_ctx" == *"installed but not set up"* && "$nosetup_ctx" == *"/cortex-onboard"* && "$nosetup_ctx" == *"<cortex-session>"* ]]; then
+    echo "  PASS: no config — session-start offers /cortex-onboard"
+    PASS=$((PASS + 1))
+else
+    echo "  FAIL: no config — missing not-set-up block"
+    echo "    Got: $(echo "$nosetup_out" | head -3)"
+    FAIL=$((FAIL + 1))
+fi
+
+# 2.0.0 — a set-up vault that can't be read must NOT be offered onboarding.
+check_unreadable() {
+    local name="$1" cfg="$2" want="$3"
+    local out ctx
+    out=$(HOME="/tmp" CORTEX_BOOT_CONFIG="$cfg" bash "$REPO_ROOT/hooks/session-start" < /dev/null 2>/dev/null || echo "HOOK_ERROR")
+    ctx=$(printf '%s' "$out" | python3 -c "import json,sys; print(json.load(sys.stdin)['hookSpecificOutput']['additionalContext'])" 2>/dev/null || true)
+    if [[ "$ctx" == *"could not read the vault"* && "$ctx" == *"$want"* && "$ctx" == *"don't offer onboarding"* && "$ctx" != *"/cortex-onboard"* ]]; then
+        echo "  PASS: $name — says vault unreadable, no onboarding offer"
+        PASS=$((PASS + 1))
+    else
+        echo "  FAIL: $name"
+        echo "    Got: $(echo "$out" | head -3)"
+        FAIL=$((FAIL + 1))
+    fi
+}
+BAD_CFG="/tmp/cortex-bad-config-$$.json"
+printf '{"vault_path": "%s"' "$TEST_VAULT" > "$BAD_CFG"
+check_unreadable "unparseable config" "$BAD_CFG" "config.json could not be read"
+GONE_VAULT="/tmp/cortex-unmounted-vault-$$"
+printf '{"vault_path": "%s", "schema_version": 1}' "$GONE_VAULT" > "$BAD_CFG"
+check_unreadable "unreachable vault dir" "$BAD_CFG" "$GONE_VAULT"
+rm -f "$BAD_CFG"
 TEST_CONFIG="$SAVED_CONFIG"
 
 # Test 3: L2 — cwd inside vault
@@ -418,6 +463,50 @@ run_boot_test "token budget truncates oversized memory" "--budget-chars 2000 --m
 run_boot_test "token budget=0 disables gate" "--budget-chars 0 --memory-cap 1000" \
     "'_budget' not in data"
 
+# 2.0.0 — a sectioned memory.md is summarized as a section index with line
+# ranges instead of its tail.
+python3 -c "
+print('# Vault Memory')
+print('## Filing Decisions')
+for i in range(30): print(f'- decision {i}')
+print('## Session Log')
+for i in range(300): print(f'### Session {i}'); print('long log line ' * 20)
+" > "$TEST_VAULT/memory.md"
+run_boot_test "sectioned memory.md becomes a section index" "" \
+    "'Filing Decisions (lines 2-32)' in data['memory'] and 'Session Log' in data['memory'] and '300 entries' in data['memory'] and 'long log line' not in data['memory']"
+
+# 2.0.0 — the rendered session block stays under the default 8000-char budget
+# even with an oversized personality.md and changelog.
+cp "$TEST_VAULT/personality.md" "$TEST_VAULT/personality.md.bak"
+python3 -c "print('padding paragraph about the user ' * 800)" >> "$TEST_VAULT/personality.md"
+python3 -c "
+for i in range(40): print(f'[2026-11-21 10:{i:02d}] UPDATED | FILE: note{i}.md | DEST: Work/ | NOTE: ' + 'x' * 400)
+" > "$TEST_VAULT/_changelog.txt"
+budget_len=$(HOME="/tmp" CORTEX_BOOT_CONFIG="$TEST_CONFIG" bash "$REPO_ROOT/hooks/session-start" < /dev/null 2>/dev/null \
+    | python3 -c "import json,sys; d=json.load(sys.stdin); print(len(d['hookSpecificOutput']['additionalContext']))" 2>/dev/null || echo 99999)
+if [[ "$budget_len" -lt 8000 ]]; then
+    echo "  PASS: rendered session block under 8000 chars ($budget_len)"
+    PASS=$((PASS + 1))
+else
+    echo "  FAIL: rendered session block is $budget_len chars (budget 8000)"
+    FAIL=$((FAIL + 1))
+fi
+mv "$TEST_VAULT/personality.md.bak" "$TEST_VAULT/personality.md"
+
+# 2.0.0 — ESC / BEL in _changelog.txt must still give valid hook JSON.
+printf '[2026-11-21 10:00] UPDATED | FILE: a.md | NOTE: color \033[31mred\033[0m bell \007 end\n' > "$TEST_VAULT/_changelog.txt"
+ctrl_ok=$(HOME="/tmp" CORTEX_BOOT_CONFIG="$TEST_CONFIG" bash "$REPO_ROOT/hooks/session-start" < /dev/null 2>/dev/null \
+    | python3 -c "import json,sys; c=json.load(sys.stdin)['hookSpecificOutput']['additionalContext']; print('yes' if '\x1b[31mred' in c and '\x07' in c else 'no')" 2>/dev/null || echo "invalid")
+if [[ "$ctrl_ok" == "yes" ]]; then
+    echo "  PASS: control characters in recent activity give valid JSON"
+    PASS=$((PASS + 1))
+else
+    echo "  FAIL: control characters broke the hook JSON ($ctrl_ok)"
+    FAIL=$((FAIL + 1))
+fi
+echo "" > "$TEST_VAULT/_changelog.txt"
+echo "$TEST_VAULT" > "$CLAUDE_PLUGIN_DATA/session-cache/vault-path.txt"
+
 # Restore normal memory
 echo "# Vault Memory" > "$TEST_VAULT/memory.md"
 
@@ -428,10 +517,10 @@ echo "session-start (v2 integration):"
 # Override HOME to prevent finding real config, use CORTEX_BOOT_CONFIG for test config
 v2_output=$(cd "$TEST_REPO" && HOME="/tmp" \
     CORTEX_BOOT_CONFIG="$TEST_CONFIG" \
-    bash "$REPO_ROOT/hooks/session-start" 2>/dev/null || echo "HOOK_ERROR")
+    bash "$REPO_ROOT/hooks/session-start" < /dev/null 2>/dev/null || echo "HOOK_ERROR")
 
 v2_pass=true
-for pattern in "cortex-boot-required" "MUST invoke the cortex-boot skill" "cortex-session" "Level: L3" "cortex-personality" "cortex-memory" "Test Project"; do
+for pattern in "cortex-session" "Level: L3" "Project: Test Project" "Stage: Core Build" "Blockers (1)" "How to use this" "L3: open your first reply" "Profile (summary of personality.md)" "User: Test User"; do
     if ! echo "$v2_output" | grep -q "$pattern"; then
         echo "  FAIL: L3 session block — missing '$pattern'"
         echo "    Got: $(echo "$v2_output" | head -5)"
@@ -442,6 +531,15 @@ for pattern in "cortex-boot-required" "MUST invoke the cortex-boot skill" "corte
 done
 if $v2_pass; then
     echo "  PASS: L3 session block"
+    PASS=$((PASS + 1))
+fi
+
+# 2.0.0 — no forced skill call and no shouting in the session block.
+if echo "$v2_output" | grep -qE "cortex-boot|EXTREMELY|MUST|not negotiable"; then
+    echo "  FAIL: session block still forces cortex-boot or shouts"
+    FAIL=$((FAIL + 1))
+else
+    echo "  PASS: session block has no forced skill call"
     PASS=$((PASS + 1))
 fi
 

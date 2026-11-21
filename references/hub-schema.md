@@ -20,7 +20,7 @@ fixed heading. Every code path that reads or writes this data must use it.
 - An empty hub carries a single placeholder row `| 1 | | | | Open |` (a row
   with an empty Question is ignored by readers).
 
-## Classification rule (readers MUST match)
+## Classification rule (every reader uses this)
 
 A row is a **blocker** when its `Type` is one of `Dependency`, `Internal`,
 `Unknown`. Any other Type (e.g. `Question`, `External`) is an **open question**.

@@ -14,8 +14,7 @@ claude-cortex/
 │   ├── plugin.json          # plugin manifest
 │   └── marketplace.json     # local marketplace
 ├── .mcp.json                # cortex-vault MCP server registration
-├── skills/                  # 11 focused skills
-│   ├── cortex-boot/         # always-on session bootstrap
+├── skills/                  # 10 focused skills
 │   ├── cortex-check-status/ # read-only project status
 │   ├── cortex-update-context/ # write decisions, blockers, scope changes
 │   ├── cortex-process-meeting/ # meeting transcript → threaded vault note
@@ -195,6 +194,7 @@ For Claude Desktop, use `scripts/install-desktop.sh` to mirror the plugin into t
 - **v1.4.2** — `cortex-daily` skill: generates a copy-paste Claude Routine prompt for the unattended daily pipeline (connector pull → dedup → file → stepped briefing). Connector-agnostic, customizable sections (YouTube opt-in), chat + saved copy with diff refresh, L1 confirm-before-write; wired into the dormant `daily_briefing` activation.
 - **v1.4.3** — Null-safe `SessionStart` formatter: budget-trimmed `memory` / `learner_profile` / `personality` fields no longer crash the boot hook when a large `personality.md` starves the char budget, so the `<cortex-session>` block is emitted instead of silently falling back to the `get_boot_context` MCP tool.
 - **v1.5.0** — Obsidian syntax rules in write paths (`references/obsidian-syntax.md`); Bases dashboards with `generate_base` tool (MCP tool count now 17) plus scaffold integration and `bin/generate-dashboards.js` backfill; `cortex-knowledge` prefers defuddle web clipping with WebFetch fallback.
+- **v2.0.0** — Updated for compatibility with Claude Opus 5.5 and Fable 5.2. Removes the forced `cortex-boot` skill (breaking); calmer startup context held under an 8000-character budget; MCP tool prefix fix in five skills; skills trimmed by about half; closing checks on the write skills; the Stop hook shows its memory flush.
 
 ---
 
